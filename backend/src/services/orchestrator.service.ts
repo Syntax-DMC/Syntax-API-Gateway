@@ -43,13 +43,19 @@ function buildApiPath(def: ApiDefinition, params?: Record<string, string>): stri
 
 /**
  * Extract a value from an object using a dot-path string.
- * Supports bracket notation: "value[0].plant" → obj.value[0].plant
+ * Supports bracket notation:
+ *   "value[0].plant"  → obj.value[0].plant
+ *   "value[].material" → obj.value[0].material  (empty [] = first element)
  */
 function extractByDotPath(obj: unknown, path: string): unknown {
   if (obj === null || obj === undefined) return undefined;
 
-  // Normalize bracket notation to dots: "value[0].plant" → "value.0.plant"
-  const normalized = path.replace(/\[(\d+)\]/g, '.$1');
+  // Normalize bracket notation to dots:
+  //   "value[0].plant"   → "value.0.plant"
+  //   "value[].material"  → "value.0.material"  (empty [] → first element)
+  const normalized = path
+    .replace(/\[\]/g, '[0]')
+    .replace(/\[(\d+)\]/g, '.$1');
   const segments = normalized.split('.');
 
   let current: unknown = obj;
