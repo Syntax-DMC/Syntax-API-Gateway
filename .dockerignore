@@ -1,6 +1,12 @@
 node_modules
 dist
 .env
+.env.example
 *.log
+*.md
 .git
-GATEWAY_PLATFORM_PROMPT.md
+.github
+.claude
+reports
+pgdata
+.gitignore

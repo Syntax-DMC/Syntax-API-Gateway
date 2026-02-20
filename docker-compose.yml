@@ -1,5 +1,6 @@
 services:
   app:
+    build: .
     image: syntax-dm-gateway:latest
     ports:
       - "3000:3000"

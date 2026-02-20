@@ -9,6 +9,8 @@ const baseNavItems = [
   { to: '/tokens', label: 'API Tokens', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
   { to: '/logs', label: 'Logs', icon: 'M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { to: '/explorer', label: 'Explorer', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3M3 3h18v18H3V3z' },
+  { to: '/registry', label: 'API Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
+  { to: '/orchestration', label: 'Orchestration', icon: 'M4 6h4v4H4V6zm0 8h4v4H4v-4zm12-8h4v4h-4V6zm0 8h4v4h-4v-4zM10 8h4M10 16h4M8 12h8' },
 ];
 
 export default function Layout() {

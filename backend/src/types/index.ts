@@ -95,3 +95,119 @@ export interface TokenAuthenticatedRequest extends Request {
   apiToken?: ApiToken;
   sapConnection?: SapConnection;
 }
+
+export interface ParamDefinition {
+  name: string;
+  type: string;
+  required: boolean;
+  description?: string;
+  default?: string;
+  example?: string;
+  context_var?: string;
+}
+
+export interface RequestBodyDef {
+  content_type: string;
+  schema?: Record<string, unknown>;
+  example?: unknown;
+}
+
+export interface ResponseSchemaDef {
+  status_codes: Record<string, { description?: string; schema?: Record<string, unknown> }>;
+}
+
+export interface DependencyDef {
+  api_slug: string;
+  field_mappings: { source: string; target: string }[];
+}
+
+export interface ApiDefinition {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  version: string;
+  spec_format: 'openapi3' | 'swagger2' | 'manual';
+  method: string;
+  path: string;
+  query_params: ParamDefinition[];
+  request_headers: ParamDefinition[];
+  request_body: RequestBodyDef | null;
+  response_schema: ResponseSchemaDef | null;
+  provides: string[];
+  depends_on: DependencyDef[];
+  tags: string[];
+  is_active: boolean;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ApiDefinitionVersion {
+  id: string;
+  api_definition_id: string;
+  version_number: number;
+  snapshot: Record<string, unknown>;
+  change_summary: string | null;
+  created_by: string | null;
+  created_at: Date;
+}
+
+export interface ConnectionApiAssignment {
+  id: string;
+  sap_connection_id: string;
+  api_definition_id: string;
+  tenant_id: string;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: Date;
+}
+
+export interface ConnectionApiAssignmentWithConnection extends ConnectionApiAssignment {
+  connection_name: string;
+  sap_base_url: string;
+  connection_is_active: boolean;
+}
+
+export interface OrchestratorApiCall {
+  slug: string;
+  params?: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface OrchestratorCallResult {
+  slug: string;
+  status: 'fulfilled' | 'rejected';
+  statusCode?: number;
+  responseHeaders?: Record<string, string>;
+  responseBody?: unknown;
+  responseSizeBytes?: number;
+  durationMs?: number;
+  error?: string;
+  layer?: number;
+  injectedParams?: Record<string, string>;
+}
+
+export interface OrchestratorResult {
+  totalDurationMs: number;
+  mode: 'parallel' | 'sequential';
+  layers?: ExecutionLayer[];
+  results: OrchestratorCallResult[];
+}
+
+export interface ExecutionLayer {
+  layer: number;
+  slugs: string[];
+}
+
+export interface ExecutionPlan {
+  mode: 'parallel' | 'sequential';
+  layers: ExecutionLayer[];
+  resolvedSlugs: string[];
+  unresolvedSlugs: string[];
+  dependencyEdges: { from: string; to: string; mappings: { source: string; target: string }[] }[];
+  warnings: string[];
+  errors: string[];
+}

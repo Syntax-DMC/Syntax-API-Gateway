@@ -128,3 +128,123 @@ export interface AuthState {
   activeTenantId: string | null;
   activeTenantRole: 'admin' | 'user' | null;
 }
+
+export interface ParamDefinition {
+  name: string;
+  type: string;
+  required: boolean;
+  description?: string;
+  default?: string;
+  example?: string;
+  context_var?: string;
+}
+
+export interface ApiDefinition {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  version: string;
+  spec_format: 'openapi3' | 'swagger2' | 'manual';
+  method: string;
+  path: string;
+  query_params: ParamDefinition[];
+  request_headers: ParamDefinition[];
+  request_body: { content_type: string; schema?: Record<string, unknown>; example?: unknown } | null;
+  response_schema: { status_codes: Record<string, { description?: string; schema?: Record<string, unknown> }> } | null;
+  provides: string[];
+  depends_on: { api_slug: string; field_mappings: { source: string; target: string }[] }[];
+  tags: string[];
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiDefinitionVersion {
+  id: string;
+  api_definition_id: string;
+  version_number: number;
+  snapshot: Record<string, unknown>;
+  change_summary: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ImportPreview {
+  title: string;
+  version: string;
+  spec_format: string;
+  endpoints: Array<{
+    slug: string;
+    name: string;
+    description?: string;
+    method: string;
+    path: string;
+    tags: string[];
+  }>;
+  errors: string[];
+}
+
+export interface ImportResult {
+  title: string;
+  created: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface ConnectionApiAssignment {
+  id: string;
+  sap_connection_id: string;
+  api_definition_id: string;
+  tenant_id: string;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  connection_name: string;
+  sap_base_url: string;
+  connection_is_active: boolean;
+}
+
+export interface ExecutionLayer {
+  layer: number;
+  slugs: string[];
+}
+
+export interface ExecutionPlan {
+  mode: 'parallel' | 'sequential';
+  layers: ExecutionLayer[];
+  resolvedSlugs: string[];
+  unresolvedSlugs: string[];
+  dependencyEdges: { from: string; to: string; mappings: { source: string; target: string }[] }[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface OrchestratorApiCall {
+  slug: string;
+  params?: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface OrchestratorCallResult {
+  slug: string;
+  status: 'fulfilled' | 'rejected';
+  statusCode?: number;
+  responseHeaders?: Record<string, string>;
+  responseBody?: unknown;
+  responseSizeBytes?: number;
+  durationMs?: number;
+  error?: string;
+  layer?: number;
+  injectedParams?: Record<string, string>;
+}
+
+export interface OrchestratorResult {
+  totalDurationMs: number;
+  mode: 'parallel' | 'sequential';
+  layers?: ExecutionLayer[];
+  results: OrchestratorCallResult[];
+}

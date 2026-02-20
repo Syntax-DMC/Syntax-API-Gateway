@@ -10,6 +10,9 @@ import LogsPage from './pages/LogsPage';
 import ExplorerPage from './pages/ExplorerPage';
 import TenantsPage from './pages/TenantsPage';
 import UsersPage from './pages/UsersPage';
+import RegistryPage from './pages/RegistryPage';
+import RegistryDetailPage from './pages/RegistryDetailPage';
+import OrchestrationPage from './pages/OrchestrationPage';
 
 export default function App() {
   const auth = useAuthProvider();
@@ -25,6 +28,9 @@ export default function App() {
             <Route path="/tokens" element={<TokensPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/explorer" element={<ExplorerPage />} />
+            <Route path="/registry" element={<RegistryPage />} />
+            <Route path="/registry/:id" element={<RegistryDetailPage />} />
+            <Route path="/orchestration" element={<OrchestrationPage />} />
             <Route path="/tenants" element={<RequireSuperadmin><TenantsPage /></RequireSuperadmin>} />
             <Route path="/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
           </Route>

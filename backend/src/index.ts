@@ -17,10 +17,13 @@ import tokensRoutes from './routes/tokens.routes';
 import logsRoutes from './routes/logs.routes';
 import explorerRoutes from './routes/explorer.routes';
 import catalogRoutes from './routes/catalog.routes';
+import registryRoutes from './routes/registry.routes';
+import orchestratorAdminRoutes from './routes/orchestrator-admin.routes';
 
 // Routes – Gateway Proxy
 import proxyDmRoutes from './routes/proxy-dm.routes';
 import proxyAgentRoutes from './routes/proxy-agent.routes';
+import orchestratorRoutes from './routes/orchestrator.routes';
 
 const app = express();
 
@@ -60,11 +63,14 @@ app.use('/api/tokens', apiLimiter, tokensRoutes);
 app.use('/api/logs', apiLimiter, logsRoutes);
 app.use('/api/explorer', apiLimiter, explorerRoutes);
 app.use('/api/catalog', apiLimiter, catalogRoutes);
+app.use('/api/registry', apiLimiter, registryRoutes);
+app.use('/api/orchestrator', apiLimiter, orchestratorAdminRoutes);
 
 // ── Gateway proxy routes ───────────────────────────────────
 // Rate limit + token auth + logging are applied inside each proxy router
 app.use('/gw/dm', proxyDmRoutes);
 app.use('/gw/agent', proxyAgentRoutes);
+app.use('/gw/query', orchestratorRoutes);
 
 // ── Serve frontend static files ────────────────────────────
 const publicDir = path.join(__dirname, '../public');
