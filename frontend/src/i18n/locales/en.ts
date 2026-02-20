@@ -396,6 +396,7 @@ const en = {
     connection: 'Connection',
     selectConnection: 'Select a connection...',
     parameters: 'Parameters',
+    context: 'Context',
     required: 'required',
     savePreset: 'Save Preset',
     loadPreset: 'Load Preset',

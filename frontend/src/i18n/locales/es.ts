@@ -398,6 +398,7 @@ const es: Translations = {
     connection: 'Conexión',
     selectConnection: 'Seleccionar una conexión...',
     parameters: 'Parámetros',
+    context: 'Contexto',
     required: 'obligatorio',
     savePreset: 'Guardar preset',
     loadPreset: 'Cargar preset',

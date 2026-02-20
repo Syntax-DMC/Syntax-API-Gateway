@@ -398,6 +398,7 @@ const de: Translations = {
     connection: 'Verbindung',
     selectConnection: 'Verbindung auswählen...',
     parameters: 'Parameter',
+    context: 'Kontext',
     required: 'erforderlich',
     savePreset: 'Preset speichern',
     loadPreset: 'Preset laden',

@@ -93,11 +93,13 @@ export default function AgentEmulatorPage() {
   // Filter definitions to assigned ones
   const assignedDefs = (allDefs || []).filter((d) => assignedIds.has(d.id) && d.is_active);
 
-  // Collect unique params from selected APIs
-  const contextParams = useMemo(
+  // Collect unique params from selected APIs, split into context vs API-specific
+  const allParams = useMemo(
     () => collectParams(assignedDefs, selectedSlugs),
     [assignedDefs, selectedSlugs]
   );
+  const contextParams = allParams.filter((p) => p.context_var);
+  const apiSpecificParams = allParams.filter((p) => !p.context_var);
 
   // Close preset dropdown on outside click
   useEffect(() => {
@@ -304,12 +306,12 @@ export default function AgentEmulatorPage() {
             )}
           </div>
 
-          {/* Dynamic Parameters */}
+          {/* Context Parameters (plant, sfc, etc.) — compact inline row */}
           {contextParams.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                  {t('emulator.parameters')}
+                  {t('emulator.context')}
                 </h2>
                 <div className="flex items-center gap-2">
                   <button
@@ -354,11 +356,36 @@ export default function AgentEmulatorPage() {
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {contextParams.map((p) => (
+                  <div key={p.name}>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 capitalize">
+                      {p.name}
+                    </label>
+                    <input
+                      type="text"
+                      value={paramValues[p.name] || ''}
+                      onChange={(e) => setParam(p.name, e.target.value)}
+                      placeholder={p.example || p.name}
+                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* API-specific Parameters (non-context) — detailed cards */}
+          {apiSpecificParams.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+              <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                {t('emulator.parameters')}
+              </h2>
+              <div className="space-y-3">
+                {apiSpecificParams.map((p) => (
                   <div key={p.name} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
                       <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
                       <span className="text-xs text-gray-400 dark:text-gray-500">({p.type || 'string'})</span>
                       {p.required && (
@@ -377,7 +404,7 @@ export default function AgentEmulatorPage() {
                       type="text"
                       value={paramValues[p.name] || ''}
                       onChange={(e) => setParam(p.name, e.target.value)}
-                      placeholder={p.example ? `${p.example}` : `Enter ${p.name}...`}
+                      placeholder={p.example || p.default || `Enter ${p.name}...`}
                       className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
                     />
                   </div>
