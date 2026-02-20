@@ -183,6 +183,14 @@ class RegistryService {
     return (rowCount ?? 0) > 0;
   }
 
+  async deleteAll(tenantId: string): Promise<number> {
+    const { rowCount } = await pool.query(
+      'DELETE FROM api_definitions WHERE tenant_id = $1',
+      [tenantId]
+    );
+    return rowCount ?? 0;
+  }
+
   async bulkCreate(
     tenantId: string,
     userId: string,

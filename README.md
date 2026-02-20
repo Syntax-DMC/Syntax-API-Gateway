@@ -199,6 +199,7 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | GET/POST | `/api/users` | User management (admin) |
 | GET/POST | `/api/registry` | API Registry CRUD, import, versioning |
 | POST | `/api/registry/import` | Import OpenAPI/Swagger specs (single or batch) |
+| DELETE | `/api/registry/all` | Delete all API definitions (admin only) |
 | POST | `/api/registry/:id/test` | Test single API call |
 | POST | `/api/orchestrator/execute` | Execute orchestrated query (admin) |
 | POST | `/api/orchestrator/validate` | Validate query execution plan |

@@ -112,6 +112,17 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
+// DELETE /all — Delete all definitions (admin only)
+router.delete('/all', requireTenantAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const count = await registryService.deleteAll(req.user!.activeTenantId!);
+    res.json({ message: `Deleted ${count} API definition(s)`, deleted: count });
+  } catch (err) {
+    console.error('Delete all registry error:', (err as Error).message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /:id — Delete (admin only)
 router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {

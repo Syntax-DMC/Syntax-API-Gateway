@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
+import { useAuth } from '../hooks/useAuth';
 import type { ApiDefinition, ImportPreview, ImportResult } from '../types';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -30,6 +31,8 @@ const emptyForm: CreateForm = {
 
 export default function RegistryPage() {
   const navigate = useNavigate();
+  const { user, activeTenantRole } = useAuth();
+  const isAdmin = user?.isSuperadmin || activeTenantRole === 'admin';
 
   // Filters
   const [search, setSearch] = useState('');
@@ -230,6 +233,18 @@ export default function RegistryPage() {
     }
   }
 
+  async function handleDeleteAll() {
+    const count = definitions?.length || 0;
+    if (!confirm(`Delete ALL ${count} API definitions? This cannot be undone.`)) return;
+    try {
+      const result = await api<{ deleted: number }>('/api/registry/all', 'DELETE');
+      alert(`${result.deleted} API definition(s) deleted.`);
+      reload();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
+
   const set = (field: keyof CreateForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setCreateForm(f => ({ ...f, [field]: e.target.value }));
 
@@ -239,6 +254,11 @@ export default function RegistryPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">API Registry</h1>
         <div className="flex items-center gap-2">
+          {isAdmin && definitions && definitions.length > 0 && (
+            <button onClick={handleDeleteAll} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
+              Delete All
+            </button>
+          )}
           <button onClick={() => setShowImport(true)} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors">
             Import OpenAPI
           </button>
