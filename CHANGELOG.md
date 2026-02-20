@@ -5,11 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-02-20
+
+### Fixed
+
+- **OpenAPI Import Circular Reference Fix** — Specs with circular `$ref` references (e.g. recursive schemas) no longer cause 500 Internal Server Error
+- `SwaggerParser.dereference()` now uses `circular: 'ignore'` mode
+- Response/request schemas are sanitized with `stripCircular()` before JSON serialization
+
 ## [1.4.0] - 2026-02-20
 
 ### Added
 
 - **Deploy Script** — `scripts/deploy.sh` for building, transferring, and deploying the Docker image to EC2 in one step (build, save, scp, load, restart)
+- **GitHub Actions CI/CD** — Automated deploy to EC2 on push to main
 
 ### Fixed
 

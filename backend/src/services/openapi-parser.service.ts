@@ -84,6 +84,20 @@ function extractSchemaType(schema: OpenAPIV3.SchemaObject | undefined): string {
   return 'string';
 }
 
+/**
+ * Safely strip circular references from an object so JSON.stringify won't throw.
+ */
+function stripCircular(obj: unknown): unknown {
+  const seen = new WeakSet();
+  return JSON.parse(JSON.stringify(obj, (_key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+    }
+    return value;
+  }));
+}
+
 class OpenApiParserService {
   async parseSpec(specString: string): Promise<ParseResult> {
     const errors: string[] = [];
@@ -98,7 +112,9 @@ class OpenApiParserService {
         // Try YAML - swagger-parser handles it natively
         specObj = specString;
       }
-      parsed = await SwaggerParser.dereference(specObj as OpenAPI.Document);
+      parsed = await SwaggerParser.dereference(specObj as OpenAPI.Document, {
+        dereference: { circular: 'ignore' },
+      });
     } catch (err) {
       return {
         title: 'Unknown',
@@ -224,8 +240,8 @@ class OpenApiParserService {
       path,
       query_params,
       request_headers,
-      request_body,
-      response_schema,
+      request_body: request_body ? stripCircular(request_body) as ParsedEndpoint['request_body'] : undefined,
+      response_schema: response_schema ? stripCircular(response_schema) as ParsedEndpoint['response_schema'] : undefined,
       tags,
     };
   }
