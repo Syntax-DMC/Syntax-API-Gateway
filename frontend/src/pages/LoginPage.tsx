@@ -1,9 +1,11 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useI18n } from '../i18n';
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,8 +32,8 @@ export default function LoginPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8">
           <div className="text-center mb-8">
             <img src="/login_logo.svg" alt="Syntax" className="mx-auto w-48 mb-4" />
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Syntax API Gateway</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Sign in to your account</p>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('login.title')}</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{t('login.subtitle')}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -42,7 +44,7 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Username</label>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">{t('login.usernameLabel')}</label>
               <input
                 type="text"
                 value={username}
@@ -56,7 +58,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Password</label>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">{t('login.passwordLabel')}</label>
               <input
                 type="password"
                 value={password}
@@ -72,7 +74,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? t('login.signingIn') : t('login.signIn')}
             </button>
           </form>
         </div>

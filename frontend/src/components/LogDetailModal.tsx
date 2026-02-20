@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useI18n } from '../i18n';
 import { api } from '../api/client';
 import type { RequestLog } from '../types';
 
@@ -10,6 +11,7 @@ interface Props {
 
 export default function LogDetailModal({ logId, onClose }: Props) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [log, setLog] = useState<RequestLog | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,7 +22,7 @@ export default function LogDetailModal({ logId, onClose }: Props) {
     setError('');
     api<RequestLog>(`/api/logs/${logId}`)
       .then(setLog)
-      .catch((err) => setError(err.message || 'Failed to load log'))
+      .catch((err) => setError(err.message || t('logDetail.failedToLoad')))
       .finally(() => setLoading(false));
   }, [logId]);
 
@@ -44,14 +46,14 @@ export default function LogDetailModal({ logId, onClose }: Props) {
       >
         {/* Header */}
         <div className="sticky top-0 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between z-10">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Request Detail</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('logDetail.title')}</h2>
           <div className="flex items-center gap-3">
             {log && log.target === 'sap_dm' && (
               <button
                 onClick={() => { onClose(); navigate(`/explorer?logId=${logId}`); }}
                 className="text-sm px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
               >
-                Replay in Explorer
+                {t('logDetail.replayInExplorer')}
               </button>
             )}
             <button
@@ -64,53 +66,53 @@ export default function LogDetailModal({ logId, onClose }: Props) {
         </div>
 
         <div className="p-6 space-y-5">
-          {loading && <p className="text-gray-500 dark:text-gray-400 text-center py-8">Loading...</p>}
+          {loading && <p className="text-gray-500 dark:text-gray-400 text-center py-8">{t('common.loading')}</p>}
           {error && <p className="text-red-400 text-center py-8">{error}</p>}
 
           {log && (
             <>
               {/* Summary */}
-              <Section title="Summary" collapsed={collapsed['summary']} onToggle={() => toggle('summary')}>
+              <Section title={t('logDetail.summary')} collapsed={collapsed['summary']} onToggle={() => toggle('summary')}>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                  <Field label="Method" value={log.method} mono />
-                  <Field label="Status" value={log.status_code != null ? String(log.status_code) : '—'} mono
+                  <Field label={t('logDetail.method')} value={log.method} mono />
+                  <Field label={t('logDetail.status')} value={log.status_code != null ? String(log.status_code) : '—'} mono
                     color={log.status_code != null ? (log.status_code < 300 ? 'text-green-400' : log.status_code < 500 ? 'text-yellow-400' : 'text-red-400') : undefined} />
-                  <Field label="Path" value={log.path} mono full />
-                  <Field label="Target" value={log.target === 'sap_dm' ? 'SAP DM' : 'Agent'} />
-                  <Field label="Duration" value={log.duration_ms != null ? `${log.duration_ms}ms` : '—'} />
-                  <Field label="Request Size" value={log.request_body_size != null ? formatBytes(log.request_body_size) : '—'} />
-                  <Field label="Response Size" value={log.response_body_size != null ? formatBytes(log.response_body_size) : '—'} />
-                  <Field label="Time" value={new Date(log.created_at).toLocaleString()} />
-                  {log.error_message && <Field label="Error" value={log.error_message} color="text-red-400" full />}
+                  <Field label={t('logDetail.path')} value={log.path} mono full />
+                  <Field label={t('logDetail.target')} value={log.target === 'sap_dm' ? t('logDetail.sapDm') : t('logDetail.agent')} />
+                  <Field label={t('logDetail.duration')} value={log.duration_ms != null ? `${log.duration_ms}ms` : '—'} />
+                  <Field label={t('logDetail.requestSize')} value={log.request_body_size != null ? formatBytes(log.request_body_size) : '—'} />
+                  <Field label={t('logDetail.responseSize')} value={log.response_body_size != null ? formatBytes(log.response_body_size) : '—'} />
+                  <Field label={t('logDetail.time')} value={new Date(log.created_at).toLocaleString()} />
+                  {log.error_message && <Field label={t('logDetail.error')} value={log.error_message} color="text-red-400" full />}
                 </div>
               </Section>
 
               {/* Request Headers */}
-              <Section title="Request Headers" collapsed={collapsed['reqHeaders']} onToggle={() => toggle('reqHeaders')}>
+              <Section title={t('logDetail.requestHeaders')} collapsed={collapsed['reqHeaders']} onToggle={() => toggle('reqHeaders')}>
                 {log.request_headers && Object.keys(log.request_headers).length > 0 ? (
                   <HeadersTable headers={log.request_headers} />
                 ) : (
-                  <Empty>No request headers captured</Empty>
+                  <Empty>{t('logDetail.noRequestHeaders')}</Empty>
                 )}
               </Section>
 
               {/* Request Body */}
-              <Section title="Request Body" collapsed={collapsed['reqBody']} onToggle={() => toggle('reqBody')}>
-                <BodyBlock body={log.request_body} />
+              <Section title={t('logDetail.requestBody')} collapsed={collapsed['reqBody']} onToggle={() => toggle('reqBody')}>
+                <BodyBlock body={log.request_body} noBodyText={t('logDetail.noBodyCaptured')} />
               </Section>
 
               {/* Response Headers */}
-              <Section title="Response Headers" collapsed={collapsed['resHeaders']} onToggle={() => toggle('resHeaders')}>
+              <Section title={t('logDetail.responseHeaders')} collapsed={collapsed['resHeaders']} onToggle={() => toggle('resHeaders')}>
                 {log.response_headers && Object.keys(log.response_headers).length > 0 ? (
                   <HeadersTable headers={log.response_headers} />
                 ) : (
-                  <Empty>No response headers captured</Empty>
+                  <Empty>{t('logDetail.noResponseHeaders')}</Empty>
                 )}
               </Section>
 
               {/* Response Body */}
-              <Section title="Response Body" collapsed={collapsed['resBody']} onToggle={() => toggle('resBody')}>
-                <BodyBlock body={log.response_body} />
+              <Section title={t('logDetail.responseBody')} collapsed={collapsed['resBody']} onToggle={() => toggle('resBody')}>
+                <BodyBlock body={log.response_body} noBodyText={t('logDetail.noBodyCaptured')} />
               </Section>
             </>
           )}
@@ -161,8 +163,8 @@ function HeadersTable({ headers }: { headers: Record<string, string> }) {
   );
 }
 
-function BodyBlock({ body }: { body: string | null }) {
-  if (!body) return <Empty>No body captured</Empty>;
+function BodyBlock({ body, noBodyText }: { body: string | null; noBodyText?: string }) {
+  if (!body) return <Empty>{noBodyText || 'No body captured'}</Empty>;
 
   let formatted = body;
   try {

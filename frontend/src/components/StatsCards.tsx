@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n';
 import type { LogStats } from '../types';
 
 interface Props {
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function StatsCards({ stats, connectionCount }: Props) {
+  const { t } = useI18n();
   const total = stats?.totalRequests ?? 0;
   const ok = stats?.byStatus['2xx'] ?? 0;
   const successRate = total > 0 ? ((ok / total) * 100).toFixed(1) : '—';
@@ -17,10 +19,10 @@ export default function StatsCards({ stats, connectionCount }: Props) {
     : 0;
 
   const cards = [
-    { label: 'Requests (24h)', value: total.toLocaleString(), color: 'blue' },
-    { label: 'Success Rate', value: successRate === '—' ? '—' : `${successRate}%`, color: 'green' },
-    { label: 'Avg Latency', value: total > 0 ? `${avgMs}ms` : '—', color: 'yellow' },
-    { label: 'Connections', value: connectionCount, color: 'purple' },
+    { label: t('stats.requests24h'), value: total.toLocaleString(), color: 'blue' },
+    { label: t('stats.successRate'), value: successRate === '—' ? '—' : `${successRate}%`, color: 'green' },
+    { label: t('stats.avgLatency'), value: total > 0 ? `${avgMs}ms` : '—', color: 'yellow' },
+    { label: t('stats.connections'), value: connectionCount, color: 'purple' },
   ];
 
   const colorMap: Record<string, string> = {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 import { api } from '../api/client';
+import { useI18n } from '../i18n';
 import type {
   ConnectionExportMeta,
   ExportFormat,
@@ -9,25 +10,26 @@ import type {
   ToolkitConfig,
 } from '../types';
 
-const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
-  { value: 'openapi3_json', label: 'OpenAPI 3.0 (JSON)' },
-  { value: 'openapi3_yaml', label: 'OpenAPI 3.0 (YAML)' },
-  { value: 'swagger2_json', label: 'Swagger 2.0 (JSON)' },
+const FORMAT_OPTIONS: { value: ExportFormat; labelKey: 'export.formatOpenapi3Json' | 'export.formatOpenapi3Yaml' | 'export.formatSwagger2Json' }[] = [
+  { value: 'openapi3_json', labelKey: 'export.formatOpenapi3Json' },
+  { value: 'openapi3_yaml', labelKey: 'export.formatOpenapi3Yaml' },
+  { value: 'swagger2_json', labelKey: 'export.formatSwagger2Json' },
 ];
 
-const SCOPE_OPTIONS: { value: ExportScope; label: string; desc: string }[] = [
-  { value: 'all', label: 'All', desc: 'Query endpoint + API schemas' },
-  { value: 'assigned', label: 'Assigned only', desc: 'API schemas only' },
+const SCOPE_OPTIONS: { value: ExportScope; labelKey: 'export.scopeAll' | 'export.scopeAssigned'; descKey: 'export.scopeAllDesc' | 'export.scopeAssignedDesc' }[] = [
+  { value: 'all', labelKey: 'export.scopeAll', descKey: 'export.scopeAllDesc' },
+  { value: 'assigned', labelKey: 'export.scopeAssigned', descKey: 'export.scopeAssignedDesc' },
 ];
 
 type TabKey = 'spec' | 'toolkit';
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'spec', label: 'OpenAPI Spec' },
-  { key: 'toolkit', label: 'Toolkit Config' },
+const TABS: { key: TabKey; labelKey: 'export.openApiSpec' | 'export.toolkitConfig' }[] = [
+  { key: 'spec', labelKey: 'export.openApiSpec' },
+  { key: 'toolkit', labelKey: 'export.toolkitConfig' },
 ];
 
 export default function ExportCenterPage() {
+  const { t } = useI18n();
   const { data: connections, loading } = useApi<ConnectionExportMeta[]>('/api/export');
 
   // Export modal state
@@ -141,7 +143,7 @@ export default function ExportCenterPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError('Copy to clipboard failed');
+      setError(t('export.copyFailed'));
     }
   }
 
@@ -178,7 +180,7 @@ export default function ExportCenterPage() {
     }
     if (activeTab === 'toolkit' && toolkitConfig) return JSON.stringify(toolkitConfig, null, 2);
     if (previewLoading) return '';
-    return 'No preview available';
+    return t('export.noPreview');
   }
 
   // Show format/scope controls only for the OpenAPI spec tab
@@ -196,9 +198,9 @@ export default function ExportCenterPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Export Center</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('export.title')}</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Export OpenAPI specs and toolkit configurations for agent integration
+          {t('export.subtitle')}
         </p>
       </div>
 
@@ -207,11 +209,11 @@ export default function ExportCenterPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="text-left px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">Connection</th>
-              <th className="text-left px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">SAP Base URL</th>
-              <th className="text-center px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">Assigned APIs</th>
-              <th className="text-center px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">Status</th>
-              <th className="text-right px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">Actions</th>
+              <th className="text-left px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">{t('export.connectionHeader')}</th>
+              <th className="text-left px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">{t('export.sapBaseUrl')}</th>
+              <th className="text-center px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">{t('export.assignedApis')}</th>
+              <th className="text-center px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">{t('common.status')}</th>
+              <th className="text-right px-4 py-3 text-gray-400 dark:text-gray-500 font-medium">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -238,7 +240,7 @@ export default function ExportCenterPage() {
                       conn.is_active ? 'text-green-400' : 'text-gray-400'
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${conn.is_active ? 'bg-green-400' : 'bg-gray-400'}`} />
-                      {conn.is_active ? 'Active' : 'Inactive'}
+                      {conn.is_active ? t('common.active') : t('common.inactive')}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -246,7 +248,7 @@ export default function ExportCenterPage() {
                       onClick={() => openExport(conn)}
                       className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                     >
-                      Export
+                      {t('export.exportButton')}
                     </button>
                   </td>
                 </tr>
@@ -254,7 +256,7 @@ export default function ExportCenterPage() {
             ) : (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-                  No connections found. Create a connection first.
+                  {t('export.noConnections')}
                 </td>
               </tr>
             )}
@@ -270,10 +272,10 @@ export default function ExportCenterPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Export – {selectedConn.name}
+                  {t('export.exportModalTitle', { name: selectedConn.name })}
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {selectedConn.assigned_api_count} API{selectedConn.assigned_api_count !== 1 ? 's' : ''} assigned
+                  {t('export.apisAssigned', { count: selectedConn.assigned_api_count })}
                 </p>
               </div>
               <button
@@ -293,40 +295,40 @@ export default function ExportCenterPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Format */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Format</label>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">{t('export.formatLabel')}</label>
                     <select
                       value={format}
                       onChange={(e) => setFormat(e.target.value as ExportFormat)}
                       className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
                     >
                       {FORMAT_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
                       ))}
                     </select>
                   </div>
 
                   {/* Scope */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Scope</label>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">{t('export.scopeLabel')}</label>
                     <select
                       value={scope}
                       onChange={(e) => setScope(e.target.value as ExportScope)}
                       className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
                     >
                       {SCOPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label} – {opt.desc}</option>
+                        <option key={opt.value} value={opt.value}>{t(opt.labelKey)} – {t(opt.descKey)}</option>
                       ))}
                     </select>
                   </div>
 
                   {/* Gateway URL */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Gateway URL</label>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">{t('export.gatewayUrl')}</label>
                     <input
                       type="text"
                       value={gatewayUrl}
                       onChange={(e) => setGatewayUrl(e.target.value)}
-                      placeholder="https://your-gateway.company.com"
+                      placeholder={t('export.gatewayUrlPlaceholder')}
                       className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
                     />
                   </div>
@@ -336,12 +338,12 @@ export default function ExportCenterPage() {
               {/* Gateway URL for non-spec tabs */}
               {!showFormatControls && (
                 <div className="max-w-md">
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Gateway URL</label>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">{t('export.gatewayUrl')}</label>
                   <input
                     type="text"
                     value={gatewayUrl}
                     onChange={(e) => setGatewayUrl(e.target.value)}
-                    placeholder="https://your-gateway.company.com"
+                    placeholder={t('export.gatewayUrlPlaceholder')}
                     className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
                   />
                 </div>
@@ -359,15 +361,15 @@ export default function ExportCenterPage() {
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                     }`}
                   >
-                    {tab.label}
+                    {t(tab.labelKey)}
                   </button>
                 ))}
               </div>
 
               {/* Tab description */}
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                {activeTab === 'spec' && 'OpenAPI specification for all registered APIs accessible through the gateway proxy.'}
-                {activeTab === 'toolkit' && 'Toolkit configuration JSON for agent framework integration.'}
+                {activeTab === 'spec' && t('export.specDescription')}
+                {activeTab === 'toolkit' && t('export.toolkitDescription')}
               </p>
 
               {/* Error */}
@@ -401,14 +403,14 @@ export default function ExportCenterPage() {
                   disabled={previewLoading || !hasPreviewContent()}
                   className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {copied ? 'Copied!' : 'Copy to Clipboard'}
+                  {copied ? t('common.copied') : t('export.copyToClipboard')}
                 </button>
                 <button
                   onClick={activeTab === 'spec' ? handleDirectDownload : handleDownload}
                   disabled={previewLoading || !hasPreviewContent()}
                   className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Download
+                  {t('common.download')}
                 </button>
               </div>
             </div>

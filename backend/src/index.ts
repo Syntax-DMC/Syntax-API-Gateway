@@ -20,6 +20,7 @@ import catalogRoutes from './routes/catalog.routes';
 import registryRoutes from './routes/registry.routes';
 import orchestratorAdminRoutes from './routes/orchestrator-admin.routes';
 import exportRoutes from './routes/export.routes';
+import emulatorRoutes from './routes/emulator.routes';
 
 // Routes – Gateway Proxy
 import proxyDmRoutes from './routes/proxy-dm.routes';
@@ -67,6 +68,7 @@ app.use('/api/catalog', apiLimiter, catalogRoutes);
 app.use('/api/registry', apiLimiter, registryRoutes);
 app.use('/api/orchestrator', apiLimiter, orchestratorAdminRoutes);
 app.use('/api/export', apiLimiter, exportRoutes);
+app.use('/api/emulator', apiLimiter, emulatorRoutes);
 
 // ── Gateway proxy routes ───────────────────────────────────
 // Rate limit + token auth + logging are applied inside each proxy router

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
+import { useI18n } from '../i18n';
 import type { ApiDefinition, ImportPreview, ImportResult } from '../types';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -32,6 +33,7 @@ const emptyForm: CreateForm = {
 export default function RegistryPage() {
   const navigate = useNavigate();
   const { user, activeTenantRole } = useAuth();
+  const { t } = useI18n();
   const isAdmin = user?.isSuperadmin || activeTenantRole === 'admin';
 
   // Filters
@@ -69,7 +71,7 @@ export default function RegistryPage() {
     setSaving(true);
     setCreateError('');
     try {
-      const tags = createForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+      const tags = createForm.tags.split(',').map(s => s.trim()).filter(Boolean);
       await api('/api/registry', 'POST', {
         ...createForm,
         tags,
@@ -137,9 +139,9 @@ export default function RegistryPage() {
     setImportError('');
     setImportResults([]);
     setImportPreviews([]);
-    const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
+    const tags = importTags.split(',').map(s => s.trim()).filter(Boolean);
     try {
-      setImportProgress(`Parsing ${specs.length} file(s)...`);
+      setImportProgress(t('registry.parsingFiles', { count: specs.length }));
       if (specs.length === 1) {
         // Single spec — use original format for backward compat
         const result = await api<ImportPreview>('/api/registry/import', 'POST', {
@@ -177,9 +179,9 @@ export default function RegistryPage() {
     if (specs.length === 0) return;
     setImporting(true);
     setImportError('');
-    const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
+    const tags = importTags.split(',').map(s => s.trim()).filter(Boolean);
     try {
-      setImportProgress(`Importing ${specs.length} file(s)...`);
+      setImportProgress(t('registry.importingFiles', { count: specs.length }));
       if (specs.length === 1) {
         const result = await api<ImportResult>('/api/registry/import', 'POST', {
           spec: specs[0].content, tags,
@@ -224,7 +226,7 @@ export default function RegistryPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    if (!confirm(t('registry.deleteConfirm', { name }))) return;
     try {
       await api(`/api/registry/${id}`, 'DELETE');
       reload();
@@ -235,10 +237,10 @@ export default function RegistryPage() {
 
   async function handleDeleteAll() {
     const count = definitions?.length || 0;
-    if (!confirm(`Delete ALL ${count} API definitions? This cannot be undone.`)) return;
+    if (!confirm(t('registry.deleteAllConfirm', { count }))) return;
     try {
       const result = await api<{ deleted: number }>('/api/registry/all', 'DELETE');
-      alert(`${result.deleted} API definition(s) deleted.`);
+      alert(t('registry.deleteAllResult', { deleted: result.deleted }));
       reload();
     } catch (err) {
       alert((err as Error).message);
@@ -252,18 +254,18 @@ export default function RegistryPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">API Registry</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('registry.title')}</h1>
         <div className="flex items-center gap-2">
           {isAdmin && definitions && definitions.length > 0 && (
             <button onClick={handleDeleteAll} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
-              Delete All
+              {t('registry.deleteAll')}
             </button>
           )}
           <button onClick={() => setShowImport(true)} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors">
-            Import OpenAPI
+            {t('registry.importOpenApi')}
           </button>
           <button onClick={() => { setCreateForm(emptyForm); setCreateError(''); setShowCreate(true); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-            New Definition
+            {t('registry.newDefinition')}
           </button>
         </div>
       </div>
@@ -272,7 +274,7 @@ export default function RegistryPage() {
       <div className="flex items-center gap-3">
         <input
           type="text"
-          placeholder="Search name, slug, path..."
+          placeholder={t('registry.searchPlaceholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -282,7 +284,7 @@ export default function RegistryPage() {
           onChange={e => setMethodFilter(e.target.value)}
           className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">All Methods</option>
+          <option value="">{t('common.allMethods')}</option>
           {METHODS.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
         <select
@@ -290,9 +292,9 @@ export default function RegistryPage() {
           onChange={e => setActiveFilter(e.target.value)}
           className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">All Status</option>
-          <option value="true">Active</option>
-          <option value="false">Inactive</option>
+          <option value="">{t('common.allStatus')}</option>
+          <option value="true">{t('common.active')}</option>
+          <option value="false">{t('common.inactive')}</option>
         </select>
       </div>
 
@@ -302,19 +304,19 @@ export default function RegistryPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700">
-                <th className="px-5 py-3 font-medium">Slug</th>
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Method</th>
-                <th className="px-5 py-3 font-medium">Path</th>
-                <th className="px-5 py-3 font-medium">Tags</th>
-                <th className="px-5 py-3 font-medium">Version</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <th className="px-5 py-3 font-medium">{t('common.slug')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.name')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.method')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.path')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.tags')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.version')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.status')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {!definitions?.length && (
-                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400 dark:text-gray-500">No API definitions yet</td></tr>
+                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400 dark:text-gray-500">{t('registry.noDefinitions')}</td></tr>
               )}
               {definitions?.map(def => (
                 <tr
@@ -342,7 +344,7 @@ export default function RegistryPage() {
                   <td className="px-5 py-3">
                     <span className={`inline-flex items-center gap-1.5 text-xs ${def.is_active ? 'text-green-400' : 'text-red-400'}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${def.is_active ? 'bg-green-400' : 'bg-red-400'}`} />
-                      {def.is_active ? 'Active' : 'Inactive'}
+                      {def.is_active ? t('common.active') : t('common.inactive')}
                     </span>
                   </td>
                   <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
@@ -350,7 +352,7 @@ export default function RegistryPage() {
                       onClick={() => handleDelete(def.id, def.name)}
                       className="px-2.5 py-1 text-xs rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </td>
                 </tr>
@@ -364,20 +366,20 @@ export default function RegistryPage() {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">New API Definition</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('registry.createTitle')}</h2>
             {createError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{createError}</div>}
 
-            <Field label="Name" value={createForm.name} onChange={set('name')} placeholder="Get Orders" />
-            <Field label="Slug (auto-generated if empty)" value={createForm.slug} onChange={set('slug')} placeholder="get-orders" />
+            <Field label={t('registry.nameLabel')} value={createForm.name} onChange={set('name')} placeholder={t('registry.namePlaceholder')} />
+            <Field label={t('registry.slugLabel')} value={createForm.slug} onChange={set('slug')} placeholder={t('registry.slugPlaceholder')} />
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Method</label>
+              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">{t('common.method')}</label>
               <select value={createForm.method} onChange={set('method')} className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {METHODS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
-            <Field label="Path" value={createForm.path} onChange={set('path')} placeholder="/api/v1/orders" />
+            <Field label={t('common.path')} value={createForm.path} onChange={set('path')} placeholder={t('registry.pathPlaceholder')} />
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Description</label>
+              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">{t('common.description')}</label>
               <textarea
                 value={createForm.description}
                 onChange={set('description')}
@@ -385,13 +387,13 @@ export default function RegistryPage() {
                 className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <Field label="Version" value={createForm.version} onChange={set('version')} placeholder="1.0" />
-            <Field label="Tags (comma-separated)" value={createForm.tags} onChange={set('tags')} placeholder="orders, production" />
+            <Field label={t('common.version')} value={createForm.version} onChange={set('version')} placeholder={t('registry.versionPlaceholder')} />
+            <Field label={t('registry.tagsLabel')} value={createForm.tags} onChange={set('tags')} placeholder={t('registry.tagsPlaceholder')} />
 
             <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
+              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.cancel')}</button>
               <button onClick={handleCreate} disabled={saving || !createForm.name || !createForm.path} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                {saving ? 'Creating...' : 'Create'}
+                {saving ? t('common.creating') : t('common.create')}
               </button>
             </div>
           </div>
@@ -402,14 +404,14 @@ export default function RegistryPage() {
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Import OpenAPI Specifications</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('registry.importTitle')}</h2>
             {importError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2 whitespace-pre-line">{importError}</div>}
             {importProgress && <div className="text-blue-400 text-sm">{importProgress}</div>}
 
             {importPreviews.length === 0 && importResults.length === 0 && (
               <>
                 <div>
-                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Upload Files</label>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">{t('registry.uploadFiles')}</label>
                   <div
                     onDragOver={e => { e.preventDefault(); setDragging(true); }}
                     onDragLeave={() => setDragging(false)}
@@ -424,11 +426,11 @@ export default function RegistryPage() {
                     <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
                     </svg>
-                    <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">
-                      Drop files here or <span className="text-blue-500">browse</span>
-                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300 font-medium"
+                      dangerouslySetInnerHTML={{ __html: t('registry.dropOrBrowse').replace(/<browse>(.*?)<\/browse>/, '<span class="text-blue-500">$1</span>') }}
+                    />
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      Supports multiple .json, .yaml, .yml files
+                      {t('registry.fileTypesHint')}
                     </div>
                     <input
                       id="spec-file-input"
@@ -442,12 +444,12 @@ export default function RegistryPage() {
                 </div>
                 {specFiles.length > 0 && (
                   <div className="space-y-1">
-                    <label className="block text-sm text-gray-500 dark:text-gray-400">Queued Files ({specFiles.length})</label>
+                    <label className="block text-sm text-gray-500 dark:text-gray-400">{t('registry.queuedFiles', { count: specFiles.length })}</label>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       {specFiles.map((f, i) => (
                         <div key={i} className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm">
                           <span className="text-gray-700 dark:text-gray-300 truncate">{f.name}</span>
-                          <button onClick={() => removeFile(i)} className="text-red-400 hover:text-red-300 text-xs ml-2 shrink-0">Remove</button>
+                          <button onClick={() => removeFile(i)} className="text-red-400 hover:text-red-300 text-xs ml-2 shrink-0">{t('common.remove')}</button>
                         </div>
                       ))}
                     </div>
@@ -455,7 +457,7 @@ export default function RegistryPage() {
                 )}
                 {specFiles.length === 0 && (
                   <div>
-                    <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Or paste spec (JSON / YAML)</label>
+                    <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">{t('registry.pasteSpec')}</label>
                     <textarea
                       value={specInput}
                       onChange={e => setSpecInput(e.target.value)}
@@ -465,11 +467,11 @@ export default function RegistryPage() {
                     />
                   </div>
                 )}
-                <Field label="Additional Tags (comma-separated)" value={importTags} onChange={e => setImportTags(e.target.value)} placeholder="sap-dm, production" />
+                <Field label={t('registry.additionalTags')} value={importTags} onChange={e => setImportTags(e.target.value)} placeholder="sap-dm, production" />
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={closeImport} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
+                  <button onClick={closeImport} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.cancel')}</button>
                   <button onClick={handlePreview} disabled={importing || (specFiles.length === 0 && !specInput.trim())} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                    {importing ? 'Parsing...' : 'Preview'}
+                    {importing ? t('registry.parsing') : t('common.preview')}
                   </button>
                 </div>
               </>
@@ -480,7 +482,7 @@ export default function RegistryPage() {
                 {importPreviews.map((preview, pi) => (
                   <div key={pi} className="space-y-2">
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      <span className="font-medium text-gray-900 dark:text-white">{preview.title}</span> v{preview.version} ({preview.spec_format}) — {preview.endpoints.length} endpoints
+                      <span className="font-medium text-gray-900 dark:text-white">{preview.title}</span> v{preview.version} ({preview.spec_format}) — {preview.endpoints.length} {t('registry.endpoints')}
                     </div>
                     {preview.errors.length > 0 && (
                       <div className="text-yellow-400 text-xs bg-yellow-500/10 rounded-lg px-4 py-2">
@@ -491,9 +493,9 @@ export default function RegistryPage() {
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="text-left text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
-                            <th className="px-3 py-2 font-medium">Method</th>
-                            <th className="px-3 py-2 font-medium">Path</th>
-                            <th className="px-3 py-2 font-medium">Name</th>
+                            <th className="px-3 py-2 font-medium">{t('common.method')}</th>
+                            <th className="px-3 py-2 font-medium">{t('common.path')}</th>
+                            <th className="px-3 py-2 font-medium">{t('common.name')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -512,12 +514,12 @@ export default function RegistryPage() {
                   </div>
                 ))}
                 <div className="text-sm text-gray-400 dark:text-gray-500 pt-1">
-                  Total: {importPreviews.reduce((sum, p) => sum + p.endpoints.length, 0)} endpoints across {importPreviews.length} spec(s)
+                  {t('registry.totalEndpoints', { total: importPreviews.reduce((sum, p) => sum + p.endpoints.length, 0), specs: importPreviews.length })}
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => { setImportPreviews([]); setImportError(''); }} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => { setImportPreviews([]); setImportError(''); }} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.back')}</button>
                   <button onClick={handleImport} disabled={importing} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                    {importing ? 'Importing...' : `Import ${importPreviews.reduce((sum, p) => sum + p.endpoints.length, 0)} Endpoints`}
+                    {importing ? t('registry.importing') : t('registry.importEndpoints', { count: importPreviews.reduce((sum, p) => sum + p.endpoints.length, 0) })}
                   </button>
                 </div>
               </>
@@ -529,8 +531,8 @@ export default function RegistryPage() {
                   {importResults.map((result, i) => (
                     <div key={i} className="space-y-1 text-sm">
                       <div className="font-medium text-gray-900 dark:text-white">{result.title}</div>
-                      <div className="text-green-400">Created: {result.created}</div>
-                      {result.skipped > 0 && <div className="text-yellow-400">Skipped (duplicate slugs): {result.skipped}</div>}
+                      <div className="text-green-400">{t('registry.created', { count: result.created })}</div>
+                      {result.skipped > 0 && <div className="text-yellow-400">{t('registry.skippedDuplicates', { count: result.skipped })}</div>}
                       {result.errors.length > 0 && (
                         <div className="text-red-400 text-xs bg-red-500/10 rounded-lg px-4 py-2">
                           {result.errors.map((e, j) => <div key={j}>{e}</div>)}
@@ -540,10 +542,10 @@ export default function RegistryPage() {
                   ))}
                 </div>
                 <div className="text-sm text-gray-400 dark:text-gray-500 pt-1 border-t border-gray-200 dark:border-gray-700">
-                  Total created: {importResults.reduce((sum, r) => sum + r.created, 0)} | Skipped: {importResults.reduce((sum, r) => sum + r.skipped, 0)}
+                  {t('registry.totalCreated', { created: importResults.reduce((sum, r) => sum + r.created, 0), skipped: importResults.reduce((sum, r) => sum + r.skipped, 0) })}
                 </div>
                 <div className="flex justify-end pt-2">
-                  <button onClick={closeImport} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Done</button>
+                  <button onClick={closeImport} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">{t('common.done')}</button>
                 </div>
               </>
             )}

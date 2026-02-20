@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
+import { useI18n } from '../i18n';
+import type { TranslationKey } from '../i18n';
 import type { SapConnection, ApiDefinition, ParamDefinition, AutoResolvePreview } from '../types';
 
 /* ────────────────────────────────────────────────────────── */
@@ -44,13 +46,13 @@ interface ExtractedParam {
   sourcePath?: string;
 }
 
-const STEPS: { num: WizardStep; label: string }[] = [
-  { num: 1, label: 'Connection' },
-  { num: 2, label: 'API Key' },
-  { num: 3, label: 'APIs' },
-  { num: 4, label: 'Flow' },
-  { num: 5, label: 'Parameters' },
-  { num: 6, label: 'Output' },
+const STEPS: { num: WizardStep; labelKey: TranslationKey }[] = [
+  { num: 1, labelKey: 'connections.stepConnection' },
+  { num: 2, labelKey: 'connections.stepApiKey' },
+  { num: 3, labelKey: 'connections.stepApis' },
+  { num: 4, labelKey: 'connections.stepFlow' },
+  { num: 5, labelKey: 'connections.stepParameters' },
+  { num: 6, labelKey: 'connections.stepOutput' },
 ];
 
 /* ────────────────────────────────────────────────────────── */
@@ -182,6 +184,7 @@ function generatePromptSpec(
 
 export default function ConnectionsPage() {
   const { data: connections, reload } = useApi<SapConnection[]>('/api/connections');
+  const { t } = useI18n();
 
   // ── Wizard state ──
   const [showWizard, setShowWizard] = useState(false);
@@ -303,7 +306,7 @@ export default function ConnectionsPage() {
 
   function closeWizard() {
     if (wizardMode === 'create' && createdConnectionId && wizardStep < 6) {
-      if (!confirm('The connection was already created. Close the wizard anyway?')) return;
+      if (!confirm(t('connections.closeWizardConfirm'))) return;
     }
     setShowWizard(false);
     reload();
@@ -321,29 +324,29 @@ export default function ConnectionsPage() {
 
     // In create mode all fields required; in edit mode secret can be blank (keep existing)
     if (!f.name.trim() || !f.sapBaseUrl.trim() || !f.tokenUrl.trim() || !f.clientId.trim() || (!isEdit && !f.clientSecret.trim())) {
-      setStepTests(p => ({ ...p, 1: { status: 'error', message: isEdit ? 'Name, URL, Token URL and Client ID are required' : 'All fields are required' } }));
+      setStepTests(p => ({ ...p, 1: { status: 'error', message: isEdit ? t('connections.editFieldsRequired') : t('connections.allFieldsRequired') } }));
       return;
     }
-    setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Testing URL reachability...' } }));
+    setStepTests(p => ({ ...p, 1: { status: 'testing', message: t('connections.testingUrl') } }));
 
     try {
       // Test URL
       const urlRes = await api<{ status: string; message?: string }>('/api/connections/test-url', 'POST', { url: f.sapBaseUrl });
       if (urlRes.status !== 'ok') {
-        setStepTests(p => ({ ...p, 1: { status: 'error', message: urlRes.message || 'URL not reachable' } }));
+        setStepTests(p => ({ ...p, 1: { status: 'error', message: urlRes.message || t('connections.urlNotReachable') } }));
         return;
       }
 
       // Test OAuth — only if secret is provided (in edit mode it may be blank = keep existing)
       let oauthExpiresIn: number | undefined;
       if (f.clientSecret.trim()) {
-        setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Testing OAuth2 credentials...' } }));
+        setStepTests(p => ({ ...p, 1: { status: 'testing', message: t('connections.testingOauth') } }));
         const oauthRes = await api<{ status: string; expiresIn?: number; message?: string }>(
           '/api/connections/test-oauth', 'POST',
           { token_url: f.tokenUrl, client_id: f.clientId, client_secret: f.clientSecret }
         );
         if (oauthRes.status !== 'ok') {
-          setStepTests(p => ({ ...p, 1: { status: 'error', message: oauthRes.message || 'OAuth2 failed' } }));
+          setStepTests(p => ({ ...p, 1: { status: 'error', message: oauthRes.message || t('connections.oauthFailed') } }));
           return;
         }
         oauthExpiresIn = oauthRes.expiresIn;
@@ -351,7 +354,7 @@ export default function ConnectionsPage() {
 
       if (isEdit && createdConnectionId) {
         // Update existing connection
-        setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Updating connection...' } }));
+        setStepTests(p => ({ ...p, 1: { status: 'testing', message: t('connections.updatingConnection') } }));
         const body: Record<string, string | undefined> = {
           name: f.name, sapBaseUrl: f.sapBaseUrl, tokenUrl: f.tokenUrl, clientId: f.clientId,
         };
@@ -363,12 +366,12 @@ export default function ConnectionsPage() {
           body.agentApiUrl = '';
         }
         await api(`/api/connections/${createdConnectionId}`, 'PATCH', body);
-        const detail = oauthExpiresIn ? `Token expires in ${oauthExpiresIn}s` : 'Credentials unchanged';
-        setStepTests(p => ({ ...p, 1: { status: 'ok', message: 'Connection updated', detail } }));
+        const detail = oauthExpiresIn ? t('connections.tokenExpiresIn', { seconds: oauthExpiresIn }) : t('connections.credentialsUnchanged');
+        setStepTests(p => ({ ...p, 1: { status: 'ok', message: t('connections.connectionUpdated'), detail } }));
         setWizardStep(2);
       } else {
         // Create new connection
-        setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Creating connection...' } }));
+        setStepTests(p => ({ ...p, 1: { status: 'testing', message: t('connections.creatingConnection') } }));
         const body: Record<string, string | undefined> = {
           name: f.name, sapBaseUrl: f.sapBaseUrl, tokenUrl: f.tokenUrl,
           clientId: f.clientId, clientSecret: f.clientSecret,
@@ -380,7 +383,7 @@ export default function ConnectionsPage() {
         const conn = await api<SapConnection>('/api/connections', 'POST', body);
         setCreatedConnectionId(conn.id);
         setTokenLabel(`${f.name} Key`);
-        setStepTests(p => ({ ...p, 1: { status: 'ok', message: 'Connection created', detail: `Token expires in ${oauthExpiresIn}s` } }));
+        setStepTests(p => ({ ...p, 1: { status: 'ok', message: t('connections.connectionCreated'), detail: t('connections.tokenExpiresIn', { seconds: oauthExpiresIn ?? 0 }) } }));
         setWizardStep(2);
       }
     } catch (err) {
@@ -561,7 +564,7 @@ export default function ConnectionsPage() {
   // ── Table actions ──────────────────────────────────────
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete "${name}"? All associated tokens and logs will be permanently deleted.`)) return;
+    if (!confirm(t('connections.deleteConfirm', { name }))) return;
     try {
       await api(`/api/connections/${id}`, 'DELETE');
       reload();
@@ -612,7 +615,7 @@ export default function ConnectionsPage() {
                 </div>
                 <span className={`text-xs font-medium truncate ${
                   isActive ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'
-                }`}>{step.label}</span>
+                }`}>{t(step.labelKey)}</span>
               </div>
               {i < STEPS.length - 1 && (
                 <div className={`w-4 h-0.5 mx-0.5 shrink-0 ${isCompleted ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700'}`} />
@@ -668,9 +671,9 @@ export default function ConnectionsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">SAP Connections</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('connections.title')}</h1>
         <button onClick={openWizard} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-          New Connection
+          {t('connections.newConnection')}
         </button>
       </div>
 
@@ -678,20 +681,20 @@ export default function ConnectionsPage() {
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-h-[90vh] overflow-y-auto p-6 transition-all ${wizardStep === 4 ? 'max-w-5xl' : wizardStep === 3 ? 'max-w-4xl' : isWideStep ? 'max-w-3xl' : 'max-w-lg'}`}>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{wizardMode === 'edit' ? 'Edit Connection' : 'New Connection'}</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{wizardMode === 'edit' ? 'Update connection, API assignments, and regenerate output' : 'Guided setup — connection, token, API selection, and agent output'}</p>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{wizardMode === 'edit' ? t('connections.editConnection') : t('connections.newConnection')}</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{wizardMode === 'edit' ? t('connections.editSubtitle') : t('connections.createSubtitle')}</p>
 
             <StepIndicator />
 
             {/* ── Step 1: SAP Connection ── */}
             {wizardStep === 1 && (
               <div className="space-y-4">
-                <Field label="Connection Name" value={wizardForm.name} onChange={wizSet('name')} placeholder="My SAP DM Production" />
-                <Field label="SAP Base URL" value={wizardForm.sapBaseUrl} onChange={wizSet('sapBaseUrl')} placeholder="https://api.eu20.dmc.cloud.sap" />
-                <Field label="Token URL" value={wizardForm.tokenUrl} onChange={wizSet('tokenUrl')} placeholder="https://...authentication.../oauth/token" />
+                <Field label={t('connections.connectionName')} value={wizardForm.name} onChange={wizSet('name')} placeholder={t('connections.connectionNamePlaceholder')} />
+                <Field label={t('connections.sapBaseUrl')} value={wizardForm.sapBaseUrl} onChange={wizSet('sapBaseUrl')} placeholder={t('connections.sapBaseUrlPlaceholder')} />
+                <Field label={t('connections.tokenUrl')} value={wizardForm.tokenUrl} onChange={wizSet('tokenUrl')} placeholder={t('connections.tokenUrlPlaceholder')} />
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Client ID" value={wizardForm.clientId} onChange={wizSet('clientId')} />
-                  <Field label={wizardMode === 'edit' ? 'Client Secret (leave empty to keep)' : 'Client Secret'} value={wizardForm.clientSecret} onChange={wizSet('clientSecret')} type="password" />
+                  <Field label={t('connections.clientId')} value={wizardForm.clientId} onChange={wizSet('clientId')} />
+                  <Field label={wizardMode === 'edit' ? t('connections.clientSecretKeep') : t('connections.clientSecret')} value={wizardForm.clientSecret} onChange={wizSet('clientSecret')} type="password" />
                 </div>
 
                 {/* Agent config disclosure */}
@@ -702,24 +705,24 @@ export default function ConnectionsPage() {
                   <svg className={`w-3 h-3 transition-transform ${showAgentConfig ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-                  Agent Configuration (optional)
+                  {t('connections.agentConfig')}
                 </button>
                 {showAgentConfig && (
                   <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-gray-700">
-                    <Field label="Agent API URL" value={wizardForm.agentApiUrl} onChange={wizSet('agentApiUrl')} placeholder="https://studio-api.ai.syntax-rnd.com" />
-                    <Field label={wizardMode === 'edit' ? 'Agent API Key (leave empty to keep)' : 'Agent API Key'} value={wizardForm.agentApiKey} onChange={wizSet('agentApiKey')} type="password" />
+                    <Field label={t('connections.agentApiUrl')} value={wizardForm.agentApiUrl} onChange={wizSet('agentApiUrl')} placeholder={t('connections.agentApiUrlPlaceholder')} />
+                    <Field label={wizardMode === 'edit' ? t('connections.agentApiKeyKeep') : t('connections.agentApiKey')} value={wizardForm.agentApiKey} onChange={wizSet('agentApiKey')} type="password" />
                   </div>
                 )}
 
                 <TestBadge state={stepTests[1]} />
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={closeWizard} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
+                  <button onClick={closeWizard} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.cancel')}</button>
                   <button
                     onClick={handleStep1}
                     disabled={stepTests[1]?.status === 'testing'}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    {stepTests[1]?.status === 'testing' ? 'Testing...' : wizardMode === 'edit' ? 'Test & Update' : 'Test & Create'}
+                    {stepTests[1]?.status === 'testing' ? t('common.testing') : wizardMode === 'edit' ? t('connections.testAndUpdate') : t('connections.testAndCreate')}
                   </button>
                 </div>
               </div>
@@ -730,20 +733,20 @@ export default function ConnectionsPage() {
               <div className="space-y-4">
                 {!createdToken ? (
                   <>
-                    <Field label="Token Label" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} placeholder="My API Key" />
+                    <Field label={t('connections.tokenLabel')} value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} placeholder={t('connections.tokenLabelPlaceholder')} />
                     {wizardError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{wizardError}</div>}
                     <button
                       onClick={handleGenerateToken}
                       disabled={wizardSaving}
                       className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                     >
-                      {wizardSaving ? 'Generating...' : 'Generate API Key'}
+                      {wizardSaving ? t('connections.generating') : t('connections.generateApiKey')}
                     </button>
                   </>
                 ) : (
                   <>
                     <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-3">
-                      <p className="text-sm font-medium text-yellow-500">Save this token now — it will not be shown again!</p>
+                      <p className="text-sm font-medium text-yellow-500">{t('connections.saveTokenWarning')}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-900 rounded-lg text-xs font-mono text-gray-900 dark:text-white break-all">
@@ -753,7 +756,7 @@ export default function ConnectionsPage() {
                         onClick={copyToken}
                         className="shrink-0 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
-                        {tokenCopied ? 'Copied!' : 'Copy'}
+                        {tokenCopied ? t('common.copied') : t('common.copy')}
                       </button>
                     </div>
                   </>
@@ -765,7 +768,7 @@ export default function ConnectionsPage() {
                     disabled={wizardMode === 'create' && !createdToken}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    {wizardMode === 'edit' && !createdToken ? 'Skip' : 'Continue'}
+                    {wizardMode === 'edit' && !createdToken ? t('common.skip') : t('common.continue')}
                   </button>
                 </div>
               </div>
@@ -779,7 +782,7 @@ export default function ConnectionsPage() {
                     type="text"
                     value={apiSearch}
                     onChange={(e) => setApiSearch(e.target.value)}
-                    placeholder="Search APIs..."
+                    placeholder={t('connections.searchApis')}
                     className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400"
                   />
                   <select
@@ -787,7 +790,7 @@ export default function ConnectionsPage() {
                     onChange={(e) => setMethodFilter(e.target.value)}
                     className="shrink-0 px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-xs"
                   >
-                    <option value="">All Methods</option>
+                    <option value="">{t('common.allMethods')}</option>
                     <option value="GET">GET</option>
                     <option value="POST">POST</option>
                     <option value="PUT">PUT</option>
@@ -798,9 +801,9 @@ export default function ConnectionsPage() {
                     onClick={toggleAllApis}
                     className="shrink-0 px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg transition-colors"
                   >
-                    {filteredApis().every(a => selectedApiIds.has(a.id)) ? 'Deselect All' : 'Select All'}
+                    {filteredApis().every(a => selectedApiIds.has(a.id)) ? t('common.deselectAll') : t('common.selectAll')}
                   </button>
-                  <span className="text-xs text-gray-400 shrink-0">{selectedApiIds.size} selected</span>
+                  <span className="text-xs text-gray-400 shrink-0">{t('connections.selected', { count: selectedApiIds.size })}</span>
                 </div>
 
                 {apisLoading ? (
@@ -810,7 +813,7 @@ export default function ConnectionsPage() {
                 ) : (
                   <div className="max-h-[40vh] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700/50">
                     {filteredApis().length === 0 ? (
-                      <div className="px-4 py-8 text-center text-gray-400 text-sm">No APIs found. Import API definitions in the Registry first.</div>
+                      <div className="px-4 py-8 text-center text-gray-400 text-sm">{t('registry.noApisFound')}</div>
                     ) : filteredApis().map(a => (
                       <label
                         key={a.id}
@@ -852,17 +855,17 @@ export default function ConnectionsPage() {
                 {wizardError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{wizardError}</div>}
 
                 <div className="flex justify-between pt-2">
-                  <button onClick={() => setWizardStep(2)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => setWizardStep(2)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.back')}</button>
                   <button
                     onClick={handleStep3Advance}
                     disabled={(wizardMode === 'create' && selectedApiIds.size === 0) || wizardSaving}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     {wizardSaving
-                      ? (wizardMode === 'edit' ? 'Updating...' : 'Assigning...')
+                      ? (wizardMode === 'edit' ? t('connections.updatingApis') : t('connections.assigningApis'))
                       : wizardMode === 'edit'
-                        ? `Update APIs (${selectedApiIds.size} selected) & Continue`
-                        : `Assign ${selectedApiIds.size} API${selectedApiIds.size !== 1 ? 's' : ''} & Continue`}
+                        ? t('connections.updateApis', { count: selectedApiIds.size })
+                        : t('connections.assignApis', { count: selectedApiIds.size })}
                   </button>
                 </div>
               </div>
@@ -874,12 +877,12 @@ export default function ConnectionsPage() {
                 {flowLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2" />
-                    <span className="text-sm text-gray-400">Resolving dependencies...</span>
+                    <span className="text-sm text-gray-400">{t('connections.resolvingDependencies')}</span>
                   </div>
                 ) : flowPreview ? (
                   <>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Auto-resolved execution flow — {flowPreview.layers.length} layer{flowPreview.layers.length !== 1 ? 's' : ''}, {Object.keys(flowPreview.apiDetails).length} APIs
+                      {t('connections.autoResolvedFlow', { layers: flowPreview.layers.length, apis: Object.keys(flowPreview.apiDetails).length })}
                     </p>
 
                     {/* Warnings */}
@@ -894,7 +897,7 @@ export default function ConnectionsPage() {
                     {/* Unresolved params */}
                     {flowPreview.unresolvedParams.length > 0 && (
                       <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                        <p className="text-xs text-red-400 font-medium mb-1">Unresolved parameters (must be provided as context):</p>
+                        <p className="text-xs text-red-400 font-medium mb-1">{t('connections.unresolvedParams')}</p>
                         {flowPreview.unresolvedParams.map((u, i) => (
                           <p key={i} className="text-xs text-red-400">{u.slug} → {u.param}</p>
                         ))}
@@ -907,7 +910,7 @@ export default function ConnectionsPage() {
                         {flowPreview.layers.map(layer => (
                           <div key={layer.layer} className="flex flex-col gap-3 min-w-[220px]">
                             <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center mb-1">
-                              Layer {layer.layer + 1}
+                              {t('connections.layer', { num: layer.layer + 1 })}
                             </div>
                             {layer.slugs.map(slug => {
                               const detail = flowPreview.apiDetails[slug];
@@ -930,7 +933,7 @@ export default function ConnectionsPage() {
                                   {/* Inputs */}
                                   {detail.query_params.length > 0 && (
                                     <div className="mb-2">
-                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium mb-1">Inputs</p>
+                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium mb-1">{t('connections.inputs')}</p>
                                       {detail.query_params.map(qp => {
                                         const isContext = detail.contextParams.includes(qp.name);
                                         const isInjected = !!detail.injectedParams[qp.name];
@@ -964,7 +967,7 @@ export default function ConnectionsPage() {
                                   {/* Outputs */}
                                   {detail.response_fields.length > 0 && (
                                     <div>
-                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium mb-1">Outputs</p>
+                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium mb-1">{t('connections.outputs')}</p>
                                       {detail.response_fields.slice(0, 8).map(rf => (
                                         <div key={rf.path} className="flex items-center gap-1.5 py-0.5">
                                           <span className="w-2 h-2 rounded-sm bg-purple-400/50 shrink-0" />
@@ -973,7 +976,7 @@ export default function ConnectionsPage() {
                                         </div>
                                       ))}
                                       {detail.response_fields.length > 8 && (
-                                        <p className="text-[9px] text-gray-400 pl-3.5">+{detail.response_fields.length - 8} more</p>
+                                        <p className="text-[9px] text-gray-400 pl-3.5">{t('connections.more', { count: detail.response_fields.length - 8 })}</p>
                                       )}
                                     </div>
                                   )}
@@ -1021,28 +1024,28 @@ export default function ConnectionsPage() {
 
                     {/* Legend */}
                     <div className="flex items-center gap-4 text-[10px] text-gray-400">
-                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" /> Context param</span>
-                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400" /> Auto-injected</span>
-                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" /> Unresolved</span>
-                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-purple-400/50" /> Output field</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" /> {t('connections.contextParam')}</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400" /> {t('connections.autoInjected')}</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" /> {t('connections.unresolved')}</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-purple-400/50" /> {t('connections.outputField')}</span>
                     </div>
                   </>
                 ) : (
                   <div className="text-center py-8 text-gray-400 text-sm">
-                    No flow preview available.
+                    {t('connections.noFlowPreview')}
                   </div>
                 )}
 
                 {wizardError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{wizardError}</div>}
 
                 <div className="flex justify-between pt-2">
-                  <button onClick={() => setWizardStep(3)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => setWizardStep(3)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.back')}</button>
                   <button
                     onClick={handleFlowAdvance}
                     disabled={flowLoading}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    Continue to Parameters
+                    {t('connections.continueToParams')}
                   </button>
                 </div>
               </div>
@@ -1058,14 +1061,14 @@ export default function ConnectionsPage() {
                     <>
                       {contextParams.length === 0 && injectedParams.length === 0 ? (
                         <div className="text-center py-8 text-gray-400 text-sm">
-                          No query parameters found in the selected APIs.
+                          {t('connections.noQueryParams')}
                         </div>
                       ) : (
                         <>
                           {contextParams.length > 0 && (
                             <>
                               <p className="text-xs text-gray-400 dark:text-gray-500">
-                                Set default values for the {contextParams.length} context parameter{contextParams.length !== 1 ? 's' : ''} that the agent must provide.
+                                {t('connections.contextParamsHint', { count: contextParams.length })}
                               </p>
                               <div className="max-h-[35vh] overflow-y-auto space-y-3">
                                 {contextParams.map(p => (
@@ -1074,8 +1077,8 @@ export default function ConnectionsPage() {
                                       <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
                                       <code className="text-sm font-mono font-medium text-gray-900 dark:text-white">{p.name}</code>
                                       <span className="text-[10px] text-gray-400">({p.type})</span>
-                                      {p.required && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">required</span>}
-                                      <span className="ml-auto text-[10px] text-gray-400">{p.usedBy.length} API{p.usedBy.length !== 1 ? 's' : ''}</span>
+                                      {p.required && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">{t('connections.required')}</span>}
+                                      <span className="ml-auto text-[10px] text-gray-400">{p.usedBy.length} {t('connections.apis')}</span>
                                     </div>
                                     {p.description && <p className="text-xs text-gray-400 mb-1.5">{p.description}</p>}
                                     <input
@@ -1094,7 +1097,7 @@ export default function ConnectionsPage() {
                           {injectedParams.length > 0 && (
                             <div className="mt-4">
                               <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                                Auto-injected parameters ({injectedParams.length}) — resolved automatically from other API responses:
+                                {t('connections.autoInjectedHint', { count: injectedParams.length })}
                               </p>
                               <div className="max-h-[20vh] overflow-y-auto space-y-1.5">
                                 {injectedParams.map(p => (
@@ -1116,12 +1119,12 @@ export default function ConnectionsPage() {
                 })()}
 
                 <div className="flex justify-between pt-2">
-                  <button onClick={() => setWizardStep(4)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => setWizardStep(4)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.back')}</button>
                   <button
                     onClick={() => setWizardStep(6)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    Generate Output
+                    {t('connections.generateOutput')}
                   </button>
                 </div>
               </div>
@@ -1132,7 +1135,7 @@ export default function ConnectionsPage() {
               <div className="space-y-4">
                 {/* Gateway URL */}
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Gateway URL</label>
+                  <label className="block text-xs text-gray-400 mb-1">{t('connections.gatewayUrl')}</label>
                   <input
                     type="text"
                     value={gatewayUrl}
@@ -1151,7 +1154,7 @@ export default function ConnectionsPage() {
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                     }`}
                   >
-                    Tools JSON
+                    {t('connections.toolsJson')}
                   </button>
                   <button
                     onClick={() => { setOutputTab('prompt'); setOutputCopied(false); }}
@@ -1161,7 +1164,7 @@ export default function ConnectionsPage() {
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                     }`}
                   >
-                    Prompt Spec
+                    {t('connections.promptSpec')}
                   </button>
                 </div>
 
@@ -1172,25 +1175,25 @@ export default function ConnectionsPage() {
 
                 {/* Actions */}
                 <div className="flex items-center justify-between">
-                  <button onClick={() => setWizardStep(5)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => setWizardStep(5)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">{t('common.back')}</button>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={copyOutput}
                       className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >
-                      {outputCopied ? 'Copied!' : 'Copy'}
+                      {outputCopied ? t('common.copied') : t('common.copy')}
                     </button>
                     <button
                       onClick={downloadOutput}
                       className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >
-                      Download
+                      {t('common.download')}
                     </button>
                     <button
                       onClick={() => { setShowWizard(false); reload(); }}
                       className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
                     >
-                      Done
+                      {t('common.done')}
                     </button>
                   </div>
                 </div>
@@ -1206,16 +1209,16 @@ export default function ConnectionsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700">
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">SAP Base URL</th>
-                <th className="px-5 py-3 font-medium">Agent</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <th className="px-5 py-3 font-medium">{t('common.name')}</th>
+                <th className="px-5 py-3 font-medium">{t('connections.sapBaseUrl')}</th>
+                <th className="px-5 py-3 font-medium">{t('connections.tableAgent')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.status')}</th>
+                <th className="px-5 py-3 font-medium">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {!connections?.length && (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400 dark:text-gray-500">No connections yet</td></tr>
+                <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400 dark:text-gray-500">{t('connections.noConnections')}</td></tr>
               )}
               {connections?.map(conn => (
                 <tr key={conn.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
@@ -1223,22 +1226,22 @@ export default function ConnectionsPage() {
                   <td className="px-5 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs truncate max-w-[250px]">{conn.sap_base_url}</td>
                   <td className="px-5 py-3">
                     {conn.has_agent_config
-                      ? <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400">Configured</span>
+                      ? <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400">{t('common.configured')}</span>
                       : <span className="text-xs text-gray-400 dark:text-gray-600">—</span>}
                   </td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex items-center gap-1.5 text-xs ${conn.is_active ? 'text-green-400' : 'text-red-400'}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${conn.is_active ? 'bg-green-400' : 'bg-red-400'}`} />
-                      {conn.is_active ? 'Active' : 'Inactive'}
+                      {conn.is_active ? t('common.active') : t('common.inactive')}
                     </span>
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
                       <Btn onClick={() => handleTest(conn.id)}>
-                        {testResult[conn.id] === 'testing...' ? '...' : testResult[conn.id] === 'ok' ? 'OK' : 'Test'}
+                        {testResult[conn.id] === 'testing...' ? '...' : testResult[conn.id] === 'ok' ? 'OK' : t('connections.test')}
                       </Btn>
-                      <Btn onClick={() => openWizardForEdit(conn)}>Edit</Btn>
-                      <Btn onClick={() => handleDelete(conn.id, conn.name)} danger>Delete</Btn>
+                      <Btn onClick={() => openWizardForEdit(conn)}>{t('common.edit')}</Btn>
+                      <Btn onClick={() => handleDelete(conn.id, conn.name)} danger>{t('common.delete')}</Btn>
                     </div>
                   </td>
                 </tr>

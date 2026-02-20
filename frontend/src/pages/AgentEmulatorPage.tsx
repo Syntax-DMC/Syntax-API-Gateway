@@ -1,56 +1,68 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
-import type { SapConnection, ApiDefinition } from '../types';
+import { useI18n } from '../i18n';
+import type { SapConnection, ApiDefinition, OrchestratorResult, OrchestratorCallResult } from '../types';
 
-type Mode = 'orchestrated' | 'direct';
-
-interface EmulatorResponse {
-  status: number;
-  headers: Record<string, string>;
-  body: string;
-  durationMs: number;
-  sizeBytes: number;
+interface EmulatorPreset {
+  name: string;
+  plant: string;
+  sfc: string;
+  workcenter: string;
+  resource: string;
 }
 
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+const PRESETS_KEY = 'emulator-presets';
+
+function loadPresets(): EmulatorPreset[] {
+  try {
+    return JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: EmulatorPreset[]) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
 
 export default function AgentEmulatorPage() {
+  const { t } = useI18n();
   const { data: connections } = useApi<SapConnection[]>('/api/connections');
   const { data: allDefs } = useApi<ApiDefinition[]>('/api/registry');
 
-  // Core state
-  const [apiKey, setApiKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
+  // Connection
   const [connectionId, setConnectionId] = useState('');
-  const [mode, setMode] = useState<Mode>('orchestrated');
 
-  // Assigned APIs for selected connection
+  // Namespace fields
+  const [plant, setPlant] = useState('');
+  const [sfc, setSfc] = useState('');
+  const [workcenter, setWorkcenter] = useState('');
+  const [resource, setResource] = useState('');
+
+  // Presets
+  const [presets, setPresets] = useState<EmulatorPreset[]>(loadPresets);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const presetRef = useRef<HTMLDivElement>(null);
+
+  // Assigned APIs
   const [assignedIds, setAssignedIds] = useState<Set<string>>(new Set());
   const [loadingApis, setLoadingApis] = useState(false);
-
-  // Orchestrated mode state
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
-  const [contextRows, setContextRows] = useState<{ key: string; value: string }[]>([
-    { key: '', value: '' },
-  ]);
-
-  // Direct mode state
-  const [directMethod, setDirectMethod] = useState('GET');
-  const [directPath, setDirectPath] = useState('');
-  const [headerRows, setHeaderRows] = useState<{ key: string; value: string }[]>([]);
-  const [directBody, setDirectBody] = useState('');
 
   // Response state
-  const [result, setResult] = useState<EmulatorResponse | null>(null);
-  const [responseTab, setResponseTab] = useState<'body' | 'headers' | 'curl'>('body');
+  const [result, setResult] = useState<OrchestratorResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(new Set());
 
   // Load assigned APIs when connection changes
   useEffect(() => {
     if (!connectionId) {
       setAssignedIds(new Set());
+      setSelectedSlugs(new Set());
       return;
     }
     setLoadingApis(true);
@@ -61,9 +73,20 @@ export default function AgentEmulatorPage() {
   }, [connectionId]);
 
   // Filter definitions to assigned ones
-  const assignedDefs = (allDefs || []).filter((d) => assignedIds.has(d.id));
+  const assignedDefs = (allDefs || []).filter((d) => assignedIds.has(d.id) && d.is_active);
 
-  // Toggle slug selection
+  // Close preset dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (presetRef.current && !presetRef.current.contains(e.target as Node)) {
+        setPresetOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Toggle API selection
   function toggleSlug(slug: string) {
     setSelectedSlugs((prev) => {
       const next = new Set(prev);
@@ -73,680 +96,531 @@ export default function AgentEmulatorPage() {
     });
   }
 
-  // Context row helpers
-  const addContextRow = () => setContextRows((r) => [...r, { key: '', value: '' }]);
-  const removeContextRow = (i: number) => setContextRows((r) => r.filter((_, idx) => idx !== i));
-  const updateContextRow = (i: number, field: 'key' | 'value', val: string) =>
-    setContextRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: val } : row)));
-
-  // Header row helpers
-  const addHeaderRow = () => setHeaderRows((r) => [...r, { key: '', value: '' }]);
-  const removeHeaderRow = (i: number) => setHeaderRows((r) => r.filter((_, idx) => idx !== i));
-  const updateHeaderRow = (i: number, field: 'key' | 'value', val: string) =>
-    setHeaderRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: val } : row)));
-
-  // Build context object from rows
+  // Build context from namespace fields
   function buildContext(): Record<string, string> {
     const ctx: Record<string, string> = {};
-    contextRows.forEach((r) => {
-      if (r.key.trim() && r.value.trim()) ctx[r.key.trim()] = r.value.trim();
-    });
+    if (plant.trim()) ctx.plant = plant.trim();
+    if (sfc.trim()) ctx.sfc = sfc.trim();
+    if (workcenter.trim()) ctx.workcenter = workcenter.trim();
+    if (resource.trim()) ctx.resource = resource.trim();
     return ctx;
   }
 
-  // Build cURL command
-  function buildCurl(): string {
-    if (mode === 'orchestrated') {
-      const body = JSON.stringify({ slugs: Array.from(selectedSlugs), context: buildContext() });
-      return `curl -X POST ${window.location.origin}/gw/query \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${apiKey}" \\\n  -d '${body}'`;
-    } else {
-      const cleanPath = directPath.startsWith('/') ? directPath : `/${directPath}`;
-      const hdrs = headerRows
-        .filter((h) => h.key.trim() && h.value.trim())
-        .map((h) => `  -H "${h.key.trim()}: ${h.value.trim()}"`)
-        .join(' \\\n');
-      const keyHeader = `  -H "x-api-key: ${apiKey}"`;
-      const allHeaders = [keyHeader, hdrs].filter(Boolean).join(' \\\n');
-      const bodyPart =
-        directBody.trim() && ['POST', 'PUT', 'PATCH'].includes(directMethod)
-          ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '${directBody.trim()}'`
-          : '';
-      return `curl -X ${directMethod} ${window.location.origin}/gw/dm${cleanPath} \\\n${allHeaders}${bodyPart}`;
-    }
+  // Save preset
+  function handleSavePreset() {
+    if (!presetName.trim()) return;
+    const newPreset: EmulatorPreset = {
+      name: presetName.trim(),
+      plant,
+      sfc,
+      workcenter,
+      resource,
+    };
+    const updated = [...presets.filter((p) => p.name !== newPreset.name), newPreset];
+    setPresets(updated);
+    savePresets(updated);
+    setPresetName('');
+    setSaveModalOpen(false);
   }
 
-  // Send request
-  const handleSend = useCallback(async () => {
-    if (!apiKey) return;
+  // Load preset
+  function handleLoadPreset(preset: EmulatorPreset) {
+    setPlant(preset.plant);
+    setSfc(preset.sfc);
+    setWorkcenter(preset.workcenter);
+    setResource(preset.resource);
+    setPresetOpen(false);
+  }
+
+  // Delete preset
+  function handleDeletePreset(name: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const updated = presets.filter((p) => p.name !== name);
+    setPresets(updated);
+    savePresets(updated);
+  }
+
+  // Execute test
+  const handleTest = useCallback(async () => {
+    if (!connectionId || selectedSlugs.size === 0) return;
     setLoading(true);
     setError('');
     setResult(null);
-
-    const startTime = Date.now();
+    setExpandedSlugs(new Set());
 
     try {
-      let res: Response;
-
-      if (mode === 'orchestrated') {
-        if (selectedSlugs.size === 0) {
-          setError('Select at least one API slug');
-          setLoading(false);
-          return;
-        }
-        res = await fetch('/gw/query', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            slugs: Array.from(selectedSlugs),
-            context: buildContext(),
-          }),
-        });
-      } else {
-        if (!directPath) {
-          setError('Enter a path');
-          setLoading(false);
-          return;
-        }
-        const cleanPath = directPath.startsWith('/') ? directPath : `/${directPath}`;
-        const headers: Record<string, string> = { 'x-api-key': apiKey };
-        headerRows.forEach((h) => {
-          if (h.key.trim() && h.value.trim()) headers[h.key.trim()] = h.value.trim();
-        });
-        if (directBody.trim() && ['POST', 'PUT', 'PATCH'].includes(directMethod)) {
-          headers['Content-Type'] = 'application/json';
-        }
-
-        res = await fetch(`/gw/dm${cleanPath}`, {
-          method: directMethod,
-          headers,
-          body:
-            directBody.trim() && ['POST', 'PUT', 'PATCH'].includes(directMethod)
-              ? directBody.trim()
-              : undefined,
-        });
-      }
-
-      const durationMs = Date.now() - startTime;
-      const bodyText = await res.text();
-      const resHeaders: Record<string, string> = {};
-      res.headers.forEach((val, key) => {
-        resHeaders[key] = val;
+      const res = await api<OrchestratorResult>('/api/emulator/execute', 'POST', {
+        connectionId,
+        slugs: Array.from(selectedSlugs),
+        context: buildContext(),
       });
-
-      setResult({
-        status: res.status,
-        headers: resHeaders,
-        body: bodyText,
-        durationMs,
-        sizeBytes: new TextEncoder().encode(bodyText).length,
-      });
-      setResponseTab('body');
+      setResult(res);
+      // Auto-expand all results
+      setExpandedSlugs(new Set(res.results.map((r) => r.slug)));
     } catch (err) {
       setError((err as Error).message || 'Request failed');
     } finally {
       setLoading(false);
     }
-  }, [apiKey, mode, selectedSlugs, contextRows, directMethod, directPath, headerRows, directBody]);
+  }, [connectionId, selectedSlugs, plant, sfc, workcenter, resource]);
 
-  // Ctrl+Enter to send
+  // Ctrl+Enter to test
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        handleSend();
+        handleTest();
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleSend]);
+  }, [handleTest]);
 
-  const canSend = apiKey && (mode === 'orchestrated' ? selectedSlugs.size > 0 : !!directPath) && !loading;
-
-  // Collect unique required params from selected APIs
-  const requiredParams = new Set<string>();
-  assignedDefs
-    .filter((d) => selectedSlugs.has(d.slug))
-    .forEach((d) => {
-      d.query_params?.forEach((p) => {
-        if (p.required) requiredParams.add(p.name);
-      });
-    });
+  const canTest = connectionId && selectedSlugs.size > 0 && !loading;
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-5rem)]">
-      {/* Sidebar — Assigned APIs */}
-      {connectionId && mode === 'orchestrated' && (
-        <div className="w-72 shrink-0 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 flex flex-col overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-              Assigned APIs ({assignedDefs.length})
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {loadingApis && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 px-2 py-4 text-center">Loading...</p>
-            )}
-            {!loadingApis && assignedDefs.length === 0 && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 px-2 py-4 text-center italic">
-                No APIs assigned to this connection
-              </p>
-            )}
-            {assignedDefs.map((d) => (
-              <label
-                key={d.id}
-                className={`flex items-start gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                  selectedSlugs.has(d.slug)
-                    ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700/50 border border-transparent'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedSlugs.has(d.slug)}
-                  onChange={() => toggleSlug(d.slug)}
-                  className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <MethodBadge method={d.method} />
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-200 truncate">
-                      {d.slug}
-                    </span>
-                  </div>
-                  {d.name && (
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                      {d.name}
-                    </p>
+    <div className="space-y-6 max-w-5xl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('emulator.title')}</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('emulator.subtitle')}</p>
+      </div>
+
+      {/* Connection selector */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
+          {t('emulator.connection')}
+        </label>
+        <select
+          value={connectionId}
+          onChange={(e) => {
+            setConnectionId(e.target.value);
+            setSelectedSlugs(new Set());
+            setResult(null);
+            setError('');
+          }}
+          className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2.5 text-sm"
+        >
+          <option value="">{t('emulator.selectConnection')}</option>
+          {connections?.filter((c) => c.is_active).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} — {c.sap_base_url}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {connectionId && (
+        <>
+          {/* Namespaces */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                {t('emulator.namespaces')}
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSaveModalOpen(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition-colors"
+                >
+                  {t('emulator.savePreset')}
+                </button>
+                <div className="relative" ref={presetRef}>
+                  <button
+                    onClick={() => setPresetOpen(!presetOpen)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    {t('emulator.loadPreset')}
+                  </button>
+                  {presetOpen && (
+                    <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 overflow-hidden">
+                      {presets.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
+                          {t('emulator.noPresets')}
+                        </p>
+                      ) : (
+                        presets.map((p) => (
+                          <div
+                            key={p.name}
+                            onClick={() => handleLoadPreset(p)}
+                            className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-sm text-gray-700 dark:text-gray-200"
+                          >
+                            <span className="truncate">{p.name}</span>
+                            <button
+                              onClick={(e) => handleDeletePreset(p.name, e)}
+                              className="text-gray-400 hover:text-red-400 transition-colors ml-2 shrink-0"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
-              </label>
-            ))}
-          </div>
-
-          {/* Quick select/deselect all */}
-          {assignedDefs.length > 0 && (
-            <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2 flex gap-2">
-              <button
-                onClick={() => setSelectedSlugs(new Set(assignedDefs.map((d) => d.slug)))}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                Select all
-              </button>
-              <button
-                onClick={() => setSelectedSlugs(new Set())}
-                className="text-xs text-gray-400 hover:text-gray-300"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 min-w-0 space-y-4 overflow-y-auto">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agent Emulator</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Test gateway endpoints as an AI agent would. Requests go through the real gateway proxy.
-        </p>
-
-        {/* API Key + Connection */}
-        <div className="flex gap-3 flex-wrap">
-          <div className="flex-1 min-w-[250px]">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              API Key
-            </label>
-            <div className="relative">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sdmg_..."
-                className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-500 pr-16"
-              />
-              <button
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1"
-              >
-                {showKey ? 'Hide' : 'Show'}
-              </button>
-            </div>
-          </div>
-
-          <div className="min-w-[200px]">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              Connection (for API list)
-            </label>
-            <select
-              value={connectionId}
-              onChange={(e) => {
-                setConnectionId(e.target.value);
-                setSelectedSlugs(new Set());
-              }}
-              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Optional...</option>
-              {connections?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Mode toggle */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => setMode('orchestrated')}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              mode === 'orchestrated'
-                ? 'text-blue-500 border-b-2 border-blue-500'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            Orchestrated Query
-          </button>
-          <button
-            onClick={() => setMode('direct')}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              mode === 'direct'
-                ? 'text-blue-500 border-b-2 border-blue-500'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            Direct SAP Call
-          </button>
-        </div>
-
-        {/* Orchestrated mode */}
-        {mode === 'orchestrated' && (
-          <div className="space-y-4">
-            {/* Selected slugs summary */}
-            {selectedSlugs.size > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {Array.from(selectedSlugs).map((slug) => (
-                  <span
-                    key={slug}
-                    className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-mono px-2 py-0.5 rounded"
-                  >
-                    {slug}
-                    <button
-                      onClick={() => toggleSlug(slug)}
-                      className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-200"
-                    >
-                      &times;
-                    </button>
-                  </span>
-                ))}
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <NamespaceField label={t('emulator.plant')} value={plant} onChange={setPlant} placeholder="e.g. 1000" />
+              <NamespaceField label={t('emulator.sfc')} value={sfc} onChange={setSfc} placeholder="e.g. SFC-001" />
+              <NamespaceField label={t('emulator.workcenter')} value={workcenter} onChange={setWorkcenter} placeholder="e.g. WC-01" />
+              <NamespaceField label={t('emulator.resource')} value={resource} onChange={setResource} placeholder="e.g. RES-01" />
+            </div>
+          </div>
+
+          {/* Data Selection */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                {t('emulator.dataSelection')}
+              </h2>
+              {assignedDefs.length > 0 && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectedSlugs(new Set(assignedDefs.map((d) => d.slug)))}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    {t('emulator.selectAll')}
+                  </button>
+                  <button
+                    onClick={() => setSelectedSlugs(new Set())}
+                    className="text-xs text-gray-400 hover:text-gray-300"
+                  >
+                    {t('common.clear')}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {loadingApis && (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">{t('common.loading')}</p>
             )}
 
-            {!connectionId && (
-              <p className="text-sm text-gray-400 dark:text-gray-500 italic">
-                Select a connection above to browse assigned APIs, or type slugs manually below.
+            {!loadingApis && assignedDefs.length === 0 && (
+              <p className="text-sm text-gray-400 dark:text-gray-500 italic text-center py-6">
+                {t('emulator.noApisAssigned')}
               </p>
             )}
 
-            {/* Manual slug input (always available) */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Add slug manually
-              </label>
-              <input
-                type="text"
-                placeholder="Type slug and press Enter..."
-                className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-500"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const val = (e.target as HTMLInputElement).value.trim();
-                    if (val) {
-                      setSelectedSlugs((prev) => new Set(prev).add(val));
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }
-                }}
-              />
-            </div>
-
-            {/* Context params */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Context Parameters
-                {requiredParams.size > 0 && (
-                  <span className="ml-2 font-normal text-gray-400 dark:text-gray-500">
-                    Required: {Array.from(requiredParams).join(', ')}
-                  </span>
-                )}
-              </label>
-              <div className="space-y-2">
-                {contextRows.map((row, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      value={row.key}
-                      onChange={(e) => updateContextRow(i, 'key', e.target.value)}
-                      placeholder="key (e.g. plant)"
-                      className="flex-1 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
-                    />
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(e) => updateContextRow(i, 'value', e.target.value)}
-                      placeholder="value"
-                      className="flex-1 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
-                    />
-                    <button
-                      onClick={() => removeContextRow(i)}
-                      className="text-gray-400 dark:text-gray-500 hover:text-red-400 transition-colors text-lg leading-none px-1"
-                    >
-                      &times;
-                    </button>
-                  </div>
+            {!loadingApis && assignedDefs.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {assignedDefs.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => toggleSlug(d.slug)}
+                    className={`text-left p-3 rounded-lg border transition-all ${
+                      selectedSlugs.has(d.slug)
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-500/30'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-gray-50 dark:bg-gray-800/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <MethodBadge method={d.method} />
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                        {d.name || d.slug}
+                      </span>
+                    </div>
+                    <p className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">{d.slug}</p>
+                    {d.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {d.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
                 ))}
-                <button
-                  onClick={addContextRow}
-                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  + Add parameter
-                </button>
-              </div>
-            </div>
-
-            {/* Send */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleSend}
-                disabled={!canSend}
-                className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  canSend
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                {loading ? <Spinner /> : 'Send POST /gw/query'}
-              </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+Enter</span>
-            </div>
-          </div>
-        )}
-
-        {/* Direct SAP mode */}
-        {mode === 'direct' && (
-          <div className="space-y-4">
-            {/* Method + Path */}
-            <div className="flex gap-2">
-              <select
-                value={directMethod}
-                onChange={(e) => setDirectMethod(e.target.value)}
-                className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono w-28"
-              >
-                {METHODS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-
-              <div className="flex-1 relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-gray-500 font-mono">
-                  /gw/dm
-                </span>
-                <input
-                  type="text"
-                  value={directPath}
-                  onChange={(e) => setDirectPath(e.target.value)}
-                  placeholder="/sap/dme/workorder/v1/orders?plant=1000"
-                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg pl-16 pr-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-500"
-                />
-              </div>
-            </div>
-
-            {/* Headers */}
-            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-              <div className="px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                  Headers {headerRows.length > 0 ? `(${headerRows.length})` : ''}
-                </span>
-              </div>
-              <div className="p-4 bg-gray-50/50 dark:bg-gray-800/30 space-y-2">
-                <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-                  x-api-key is added automatically from the API Key field above.
-                </p>
-                {headerRows.map((row, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      value={row.key}
-                      onChange={(e) => updateHeaderRow(i, 'key', e.target.value)}
-                      placeholder="Header name"
-                      className="flex-1 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
-                    />
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(e) => updateHeaderRow(i, 'value', e.target.value)}
-                      placeholder="Value"
-                      className="flex-1 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
-                    />
-                    <button
-                      onClick={() => removeHeaderRow(i)}
-                      className="text-gray-400 dark:text-gray-500 hover:text-red-400 transition-colors text-lg leading-none px-1"
-                    >
-                      &times;
-                    </button>
-                  </div>
-                ))}
-                <button
-                  onClick={addHeaderRow}
-                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  + Add header
-                </button>
-              </div>
-            </div>
-
-            {/* Body */}
-            {['POST', 'PUT', 'PATCH'].includes(directMethod) && (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                <div className="px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Body</span>
-                </div>
-                <div className="p-4 bg-gray-50/50 dark:bg-gray-800/30">
-                  <textarea
-                    value={directBody}
-                    onChange={(e) => setDirectBody(e.target.value)}
-                    placeholder='{ "json": "body" }'
-                    rows={6}
-                    className="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600 resize-y"
-                  />
-                </div>
               </div>
             )}
+          </div>
 
-            {/* Send */}
-            <div className="flex items-center gap-3">
+          {/* Test button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleTest}
+              disabled={!canTest}
+              className={`px-8 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                canTest
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {loading ? <Spinner label={t('common.testing')} /> : t('emulator.test')}
+            </button>
+            <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+Enter</span>
+            {selectedSlugs.size > 0 && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {t('emulator.selectedCount', { count: selectedSlugs.size })}
+              </span>
+            )}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Response */}
+          {result && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {/* Response header */}
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-4">
+                <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('common.response')}</h2>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {result.totalDurationMs}ms {t('emulator.total')}
+                </span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {result.results.length} API{result.results.length !== 1 ? 's' : ''}
+                </span>
+                {result.layers && result.layers.length > 1 && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-purple-500/10 text-purple-400">
+                    {t('emulator.layers', { count: result.layers.length })}
+                  </span>
+                )}
+              </div>
+
+              {/* Per-slug results */}
+              <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                {result.results.map((r) => (
+                  <ResultCard
+                    key={r.slug}
+                    result={r}
+                    expanded={expandedSlugs.has(r.slug)}
+                    onToggle={() =>
+                      setExpandedSlugs((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(r.slug)) next.delete(r.slug);
+                        else next.add(r.slug);
+                        return next;
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Hint when nothing shown */}
+          {!result && !error && !loading && (
+            <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
+              {t('emulator.hint')}
+            </p>
+          )}
+        </>
+      )}
+
+      {/* No connection selected hint */}
+      {!connectionId && (
+        <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-12">
+          {t('emulator.noConnection')}
+        </p>
+      )}
+
+      {/* Save preset modal */}
+      {saveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSaveModalOpen(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl w-full max-w-sm p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              {t('emulator.savePreset')}
+            </h3>
+            <input
+              type="text"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              placeholder={t('emulator.presetNamePlaceholder')}
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm mb-4"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSavePreset();
+              }}
+            />
+            <div className="text-xs text-gray-400 dark:text-gray-500 mb-4 space-y-1">
+              {plant && <p>Plant: {plant}</p>}
+              {sfc && <p>SFC: {sfc}</p>}
+              {workcenter && <p>Workcenter: {workcenter}</p>}
+              {resource && <p>Resource: {resource}</p>}
+            </div>
+            <div className="flex gap-3 justify-end">
               <button
-                onClick={handleSend}
-                disabled={!canSend}
-                className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  canSend
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                }`}
+                onClick={() => setSaveModalOpen(false)}
+                className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
-                {loading ? <Spinner /> : `Send ${directMethod} /gw/dm/...`}
+                {t('common.cancel')}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+Enter</span>
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-900/30 border border-red-700 rounded-lg px-4 py-3 text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Response */}
-        {result && (
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-            <div className="flex items-center gap-4 px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Response</span>
-              <StatusBadge code={result.status} />
-              <span className="text-sm text-gray-500 dark:text-gray-400">{result.durationMs}ms</span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">{formatBytes(result.sizeBytes)}</span>
-            </div>
-
-            <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70">
-              <TabButton active={responseTab === 'body'} onClick={() => setResponseTab('body')}>
-                Body
-              </TabButton>
-              <TabButton
-                active={responseTab === 'headers'}
-                onClick={() => setResponseTab('headers')}
+              <button
+                onClick={handleSavePreset}
+                disabled={!presetName.trim()}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
-                Headers ({Object.keys(result.headers).length})
-              </TabButton>
-              <TabButton active={responseTab === 'curl'} onClick={() => setResponseTab('curl')}>
-                cURL
-              </TabButton>
-            </div>
-
-            <div className="p-4 bg-gray-50/50 dark:bg-gray-800/30">
-              {responseTab === 'body' && <BodyBlock body={result.body} />}
-              {responseTab === 'headers' && <HeadersTable headers={result.headers} />}
-              {responseTab === 'curl' && <CurlBlock curl={buildCurl()} />}
+                {t('common.save')}
+              </button>
             </div>
           </div>
-        )}
-
-        {/* Hint */}
-        {!result && !error && !loading && (
-          <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
-            Paste an API key, select slugs or enter a path, and hit Send (or Ctrl+Enter).
-          </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* -- Helper components ---------------------------------------- */
+/* ── Helper components ─────────────────────────────────── */
+
+function NamespaceField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
+      />
+    </div>
+  );
+}
 
 function MethodBadge({ method }: { method: string }) {
   const colors: Record<string, string> = {
-    GET: 'text-green-400',
-    POST: 'text-blue-400',
-    PUT: 'text-yellow-400',
-    PATCH: 'text-orange-400',
-    DELETE: 'text-red-400',
+    GET: 'bg-green-500/10 text-green-500',
+    POST: 'bg-blue-500/10 text-blue-400',
+    PUT: 'bg-yellow-500/10 text-yellow-500',
+    PATCH: 'bg-orange-500/10 text-orange-400',
+    DELETE: 'bg-red-500/10 text-red-400',
   };
   return (
-    <span className={`text-[10px] font-mono font-bold shrink-0 w-9 ${colors[method] || 'text-gray-400'}`}>
+    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${colors[method] || 'bg-gray-500/10 text-gray-400'}`}>
       {method}
     </span>
   );
 }
 
-function Spinner() {
+function ResultCard({
+  result,
+  expanded,
+  onToggle,
+}: {
+  result: OrchestratorCallResult;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const ok = result.status === 'fulfilled';
+  const statusColor = !ok
+    ? 'text-red-400'
+    : result.statusCode && result.statusCode < 300
+      ? 'text-green-400'
+      : result.statusCode && result.statusCode < 500
+        ? 'text-yellow-400'
+        : 'text-red-400';
+
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+      >
+        <span className="text-gray-400 dark:text-gray-500 text-xs w-4">{expanded ? '\u25BC' : '\u25B6'}</span>
+        <span className="text-sm font-mono font-medium text-gray-800 dark:text-gray-100">{result.slug}</span>
+        {ok && result.statusCode != null && (
+          <span className={`text-sm font-mono ${statusColor}`}>{result.statusCode}</span>
+        )}
+        {!ok && <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">error</span>}
+        {result.durationMs != null && (
+          <span className="text-xs text-gray-400 dark:text-gray-500">{result.durationMs}ms</span>
+        )}
+        {result.responseSizeBytes != null && (
+          <span className="text-xs text-gray-400 dark:text-gray-500">{formatBytes(result.responseSizeBytes)}</span>
+        )}
+        {result.layer != null && result.layer > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
+            L{result.layer}
+          </span>
+        )}
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-4 space-y-3">
+          {/* Injected params */}
+          {result.injectedParams && Object.keys(result.injectedParams).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(result.injectedParams).map(([key, val]) => (
+                <span
+                  key={key}
+                  className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono"
+                >
+                  {key}={val}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Error */}
+          {result.error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-sm text-red-400">
+              {result.error}
+            </div>
+          )}
+
+          {/* Response body */}
+          {result.responseBody != null && (
+            <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 rounded-lg p-4 overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre-wrap break-all">
+              {typeof result.responseBody === 'string'
+                ? result.responseBody
+                : JSON.stringify(result.responseBody, null, 2)}
+            </pre>
+          )}
+
+          {/* Response headers */}
+          {result.responseHeaders && Object.keys(result.responseHeaders).length > 0 && (
+            <details className="text-xs">
+              <summary className="text-gray-400 dark:text-gray-500 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">
+                Headers ({Object.keys(result.responseHeaders).length})
+              </summary>
+              <div className="mt-2 space-y-0.5 pl-2">
+                {Object.entries(result.responseHeaders).map(([key, val]) => (
+                  <div key={key} className="flex gap-2">
+                    <span className="text-blue-400 font-mono shrink-0">{key}:</span>
+                    <span className="text-gray-500 dark:text-gray-400 font-mono break-all">{val}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Spinner({ label }: { label?: string }) {
   return (
     <span className="flex items-center gap-2">
       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
-      Sending
+      {label}
     </span>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium transition-colors ${
-        active
-          ? 'text-blue-400 border-b-2 border-blue-400'
-          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function StatusBadge({ code }: { code: number }) {
-  const color =
-    code < 300
-      ? 'bg-green-900/50 text-green-400'
-      : code < 500
-        ? 'bg-yellow-900/50 text-yellow-400'
-        : 'bg-red-900/50 text-red-400';
-  return <span className={`px-2 py-0.5 rounded text-sm font-mono ${color}`}>{code}</span>;
-}
-
-function HeadersTable({ headers }: { headers: Record<string, string> }) {
-  const entries = Object.entries(headers);
-  if (entries.length === 0)
-    return <p className="text-gray-400 dark:text-gray-500 text-sm italic">No headers</p>;
-  return (
-    <div className="space-y-1">
-      {entries.map(([key, val]) => (
-        <div key={key} className="flex text-xs gap-2">
-          <span className="text-blue-400 font-mono shrink-0">{key}:</span>
-          <span className="text-gray-600 dark:text-gray-300 font-mono break-all">{val}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BodyBlock({ body }: { body: string | null }) {
-  if (!body) return <p className="text-gray-400 dark:text-gray-500 text-sm italic">No body</p>;
-  let formatted = body;
-  try {
-    formatted = JSON.stringify(JSON.parse(body), null, 2);
-  } catch {
-    // not JSON
-  }
-  return (
-    <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 rounded p-3 overflow-x-auto max-h-96 whitespace-pre-wrap break-all">
-      {formatted}
-    </pre>
-  );
-}
-
-function CurlBlock({ curl }: { curl: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        onClick={() => {
-          navigator.clipboard.writeText(curl);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        }}
-        className="absolute top-2 right-2 text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-      >
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
-      <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">
-        {curl}
-      </pre>
-    </div>
   );
 }
 

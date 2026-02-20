@@ -12,8 +12,9 @@ Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secu
 - **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs and toolkit configs for agent integration
 - **Connection Wizard** — 6-step guided flow with visual Flow Designer showing API dependency graphs
 - **Multi-Tenancy** — tenant-scoped connections, tokens, and users with per-tenant roles
-- **Agent Emulator** — Test gateway endpoints as an AI agent with real API key auth, orchestrated queries, and cURL export
+- **Agent Emulator** — Simulate agent calls to the gateway: select a connection, fill in SAP DM namespaces (Plant, SFC, Workcenter, Resource), choose data types, and test with deep response inspection
 - **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, agent emulator, and export
+- **Multi-Language** — Full i18n support (EN, DE, ES, FR) with auto-detection from browser settings and language switcher
 - **Security** — AES-256-GCM secret encryption, Helmet, CORS, rate limiting, token revocation
 - **Request Logging** — async fire-and-forget with header redaction and body size cap (64 KB)
 
@@ -218,6 +219,7 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | POST | `/api/connections/:id/assign-apis` | Bulk assign APIs to connection |
 | GET | `/api/connections/:id/assignments` | List assigned API definition IDs |
 | POST | `/api/connections/:id/replace-apis` | Replace all API assignments |
+| POST | `/api/emulator/execute` | Execute orchestrated query (JWT auth, for Agent Emulator) |
 
 ### Gateway Proxy (`/gw`)
 

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthContext, useAuthProvider } from './hooks/useAuth';
+import { I18nContext, useI18nProvider } from './i18n';
 import ProtectedRoute, { RequireSuperadmin, RequireAdmin } from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -17,8 +18,10 @@ import AgentEmulatorPage from './pages/AgentEmulatorPage';
 
 export default function App() {
   const auth = useAuthProvider();
+  const i18n = useI18nProvider();
 
   return (
+    <I18nContext.Provider value={i18n}>
     <AuthContext.Provider value={auth}>
       <BrowserRouter>
         <Routes>
@@ -40,5 +43,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>
+    </I18nContext.Provider>
   );
 }

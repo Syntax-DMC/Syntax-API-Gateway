@@ -2,16 +2,18 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, LOCALE_NAMES } from '../i18n';
+import type { Locale, TranslationKey } from '../i18n';
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: TranslationKey;
   icon: string;
 }
 
 interface NavGroup {
   key: string;
-  label: string;
+  labelKey: TranslationKey;
   items: NavItem[];
   adminOnly?: boolean;
   superOnly?: boolean;
@@ -19,50 +21,50 @@ interface NavGroup {
 
 const DASHBOARD_ITEM: NavItem = {
   to: '/',
-  label: 'Dashboard',
+  labelKey: 'nav.dashboard',
   icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1',
 };
 
 const NAV_GROUPS: NavGroup[] = [
   {
     key: 'setup',
-    label: 'Setup',
+    labelKey: 'nav.setup',
     items: [
-      { to: '/connections', label: 'Connections', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2' },
-      { to: '/tokens', label: 'API Tokens', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
+      { to: '/connections', labelKey: 'nav.connections', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2' },
+      { to: '/tokens', labelKey: 'nav.apiTokens', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
     ],
   },
   {
     key: 'apis',
-    label: 'APIs',
+    labelKey: 'nav.apis',
     items: [
-      { to: '/registry', label: 'Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
+      { to: '/registry', labelKey: 'nav.registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
     ],
   },
   {
     key: 'tools',
-    label: 'Tools',
+    labelKey: 'nav.tools',
     items: [
-      { to: '/logs', label: 'Logs', icon: 'M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-      { to: '/explorer', label: 'Explorer', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3M3 3h18v18H3V3z' },
-      { to: '/emulator', label: 'Agent Emulator', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-      { to: '/export', label: 'Export Center', icon: 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+      { to: '/logs', labelKey: 'nav.logs', icon: 'M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+      { to: '/explorer', labelKey: 'nav.explorer', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3M3 3h18v18H3V3z' },
+      { to: '/emulator', labelKey: 'nav.agentEmulator', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+      { to: '/export', labelKey: 'nav.exportCenter', icon: 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
     ],
   },
   {
     key: 'admin',
-    label: 'Admin',
+    labelKey: 'nav.admin',
     adminOnly: true,
     items: [
-      { to: '/users', label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197V21' },
+      { to: '/users', labelKey: 'nav.users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197V21' },
     ],
   },
   {
     key: 'super',
-    label: 'Admin',
+    labelKey: 'nav.admin',
     superOnly: true,
     items: [
-      { to: '/tenants', label: 'Tenants', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+      { to: '/tenants', labelKey: 'nav.tenants', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
     ],
   },
 ];
@@ -72,10 +74,13 @@ const DEFAULT_EXPANDED: Record<string, boolean> = { setup: true, apis: true, too
 export default function Layout() {
   const { user, logout, memberships, activeTenantId, activeTenantRole, switchTenant } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t, locale, setLocale } = useI18n();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [tenantOpen, setTenantOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const langRef = useRef<HTMLDivElement>(null);
 
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     try {
@@ -94,11 +99,14 @@ export default function Layout() {
     });
   }
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setTenantOpen(false);
+      }
+      if (langRef.current && !langRef.current.contains(e.target as Node)) {
+        setLangOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
@@ -121,7 +129,7 @@ export default function Layout() {
     }
   }
   if (adminItems.length > 0) {
-    visibleGroups.push({ key: 'admin', label: 'Admin', items: adminItems });
+    visibleGroups.push({ key: 'admin', labelKey: 'nav.admin', items: adminItems });
   }
 
   function groupHasActiveRoute(group: NavGroup): boolean {
@@ -149,7 +157,7 @@ export default function Layout() {
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
-            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            title={sidebarOpen ? t('nav.collapseSidebar') : t('nav.expandSidebar')}
           >
             {sidebarOpen ? (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,7 +186,7 @@ export default function Layout() {
           <button
             onClick={toggleTheme}
             className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
           >
             {theme === 'dark' ? (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,10 +199,37 @@ export default function Layout() {
             )}
           </button>
 
+          {/* Language switcher */}
+          <div className="relative" ref={langRef}>
+            <button
+              onClick={() => setLangOpen(!langOpen)}
+              className="px-2 py-1.5 rounded-lg text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
+              title={t('nav.language')}
+            >
+              {LOCALE_LABELS[locale]}
+            </button>
+            {langOpen && (
+              <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden z-50">
+                {SUPPORTED_LOCALES.map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => { setLocale(l); setLangOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2 ${
+                      l === locale ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    <span className="font-semibold w-6">{LOCALE_LABELS[l]}</span>
+                    <span>{LOCALE_NAMES[l]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={logout}
             className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
-            title="Logout"
+            title={t('nav.logout')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -213,7 +248,7 @@ export default function Layout() {
                   onClick={() => setTenantOpen(!tenantOpen)}
                   className="w-full flex items-center justify-between px-3 py-2 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
-                  <span className="text-gray-600 dark:text-gray-300 truncate">{activeTenant?.tenantName ?? 'Select tenant'}</span>
+                  <span className="text-gray-600 dark:text-gray-300 truncate">{activeTenant?.tenantName ?? t('nav.selectTenant')}</span>
                   <svg className={`w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform ${tenantOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -253,7 +288,7 @@ export default function Layout() {
                 <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={DASHBOARD_ITEM.icon} />
                 </svg>
-                {DASHBOARD_ITEM.label}
+                {t(DASHBOARD_ITEM.labelKey)}
               </NavLink>
 
               {/* Grouped navigation */}
@@ -269,7 +304,7 @@ export default function Layout() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
-                          {group.label}
+                          {t(group.labelKey)}
                         </span>
                         {!isExpanded && hasActive && (
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
@@ -303,7 +338,7 @@ export default function Layout() {
                             <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
                             </svg>
-                            {item.label}
+                            {t(item.labelKey)}
                           </NavLink>
                         ))}
                       </div>

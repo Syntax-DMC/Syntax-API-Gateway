@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-02-20
+
+### Added
+
+- **Full i18n support** — All frontend strings translated into English, German, Spanish, and French (~370 keys per locale)
+- Custom lightweight i18n framework with `useI18n()` hook, type-safe dot-notation keys, and `{variable}` interpolation
+- Language auto-detection from browser settings (`navigator.language`), persisted in localStorage
+- Language switcher dropdown in the header (EN/DE/ES/FR)
+- Non-English locales lazy-loaded (~16 KB per chunk) to keep initial bundle small
+- Locale-aware date/number formatting via `toLocaleString(locale)`
+
+### Changed
+
+- **Agent Emulator redesigned** — Simplified guided workflow replacing the old two-mode (Orchestrated/Direct) interface
+  - Select a connection (auto-authenticated via JWT, no API key needed)
+  - Fill in SAP DM namespace fields: Plant, SFC, Workcenter, Resource
+  - Select data types from connection's assigned API definitions (card grid)
+  - Click Test to execute via the orchestrator — per-slug collapsible response cards with status, duration, body, and injected parameters
+- New backend endpoint `POST /api/emulator/execute` (JWT auth) calls `orchestratorService.executeAutoResolved()` directly
+- Namespace presets: save/load Plant, SFC, Workcenter, Resource values to localStorage
+
 ## [1.12.0] - 2026-02-20
 
 ### Fixed
