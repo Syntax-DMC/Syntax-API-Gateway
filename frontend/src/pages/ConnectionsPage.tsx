@@ -105,7 +105,7 @@ function generateToolsJson(
       name: `sap_dm_gw_${safeName}`,
       description: `SAP DM Gateway — ${selectedApis.map(a => a.name).join(', ')}`,
       headers: { 'X-API-Key': '<YOUR_GATEWAY_KEY>' },
-      base_url: gatewayUrl,
+      base_url: `${gatewayUrl.replace(/\/+$/, '')}/gw/dm`,
     },
     apis: selectedApis.map(a => ({
       slug: a.slug,
@@ -137,7 +137,7 @@ function generatePromptSpec(
   const lines: string[] = [];
   lines.push(`# SAP DM Gateway — ${connectionName}`);
   lines.push('');
-  lines.push(`Base URL: ${gatewayUrl}`);
+  lines.push(`Base URL: ${gatewayUrl.replace(/\/+$/, '')}/gw/dm`);
   lines.push('');
   lines.push('## Authentication');
   lines.push('All requests require an `x-api-key` header with your gateway API key.');
@@ -147,7 +147,7 @@ function generatePromptSpec(
 
   for (const a of selectedApis) {
     lines.push(`### ${a.slug}`);
-    lines.push(`**${a.name}** — ${a.method} ${a.path}`);
+    lines.push(`**${a.name}** — ${a.method} /gw/dm${a.path}`);
     if (a.description) lines.push(a.description);
     lines.push('');
 

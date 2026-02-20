@@ -71,7 +71,7 @@ class ExportService {
       name: `sap_dm_gw_${safeName}`,
       description: `SAP DM Gateway – ${apiNames.length > 0 ? apiNames.join(', ') : 'No APIs assigned'}`,
       headers: { 'X-API-Key': '<YOUR_GATEWAY_KEY>' },
-      base_url: gatewayUrl,
+      base_url: `${gatewayUrl.replace(/\/+$/, '')}/gw/dm`,
       show_intermediate_steps: true,
     };
   }
