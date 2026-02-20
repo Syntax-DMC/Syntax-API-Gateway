@@ -1,26 +1,99 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 
-const baseNavItems = [
-  { to: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
-  { to: '/connections', label: 'Connections', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2' },
-  { to: '/tokens', label: 'API Tokens', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
-  { to: '/logs', label: 'Logs', icon: 'M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-  { to: '/explorer', label: 'Explorer', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3M3 3h18v18H3V3z' },
-  { to: '/registry', label: 'API Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
-  { to: '/orchestration', label: 'Orchestration', icon: 'M4 6h4v4H4V6zm0 8h4v4H4v-4zm12-8h4v4h-4V6zm0 8h4v4h-4v-4zM10 8h4M10 16h4M8 12h8' },
-  { to: '/use-cases', label: 'Use Cases', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
-  { to: '/export', label: 'Export', icon: 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: string;
+}
+
+interface NavGroup {
+  key: string;
+  label: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+  superOnly?: boolean;
+}
+
+const DASHBOARD_ITEM: NavItem = {
+  to: '/',
+  label: 'Dashboard',
+  icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1',
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    key: 'setup',
+    label: 'Setup',
+    items: [
+      { to: '/connections', label: 'Connections', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2' },
+      { to: '/tokens', label: 'API Tokens', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
+    ],
+  },
+  {
+    key: 'apis',
+    label: 'APIs',
+    items: [
+      { to: '/registry', label: 'Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
+      { to: '/use-cases', label: 'Use Cases', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
+      { to: '/orchestration', label: 'Orchestration', icon: 'M4 6h4v4H4V6zm0 8h4v4H4v-4zm12-8h4v4h-4V6zm0 8h4v4h-4v-4zM10 8h4M10 16h4M8 12h8' },
+    ],
+  },
+  {
+    key: 'tools',
+    label: 'Tools',
+    items: [
+      { to: '/logs', label: 'Logs', icon: 'M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+      { to: '/explorer', label: 'Explorer', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3M3 3h18v18H3V3z' },
+      { to: '/export', label: 'Export Center', icon: 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+    ],
+  },
+  {
+    key: 'admin',
+    label: 'Admin',
+    adminOnly: true,
+    items: [
+      { to: '/users', label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197V21' },
+    ],
+  },
+  {
+    key: 'super',
+    label: 'Admin',
+    superOnly: true,
+    items: [
+      { to: '/tenants', label: 'Tenants', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+    ],
+  },
 ];
+
+const DEFAULT_EXPANDED: Record<string, boolean> = { setup: true, apis: true, tools: false, admin: false, super: false };
 
 export default function Layout() {
   const { user, logout, memberships, activeTenantId, activeTenantRole, switchTenant } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [tenantOpen, setTenantOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('sidebar-groups');
+      return saved ? JSON.parse(saved) : DEFAULT_EXPANDED;
+    } catch {
+      return DEFAULT_EXPANDED;
+    }
+  });
+
+  function toggleGroup(key: string) {
+    setExpandedGroups(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('sidebar-groups', JSON.stringify(next));
+      return next;
+    });
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -36,20 +109,26 @@ export default function Layout() {
   const activeTenant = memberships.find((m) => m.tenantId === activeTenantId);
   const isAdmin = user?.isSuperadmin || activeTenantRole === 'admin';
 
-  // Build nav items dynamically
-  const navItems = [...baseNavItems];
-  if (isAdmin) {
-    navItems.push({
-      to: '/users',
-      label: 'Users',
-      icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197V21',
-    });
+  // Filter and merge admin groups
+  const visibleGroups: NavGroup[] = [];
+  const adminItems: NavItem[] = [];
+  for (const g of NAV_GROUPS) {
+    if (g.superOnly && !user?.isSuperadmin) continue;
+    if (g.adminOnly && !isAdmin) continue;
+    if (g.key === 'admin' || g.key === 'super') {
+      adminItems.push(...g.items);
+    } else {
+      visibleGroups.push(g);
+    }
   }
-  if (user?.isSuperadmin) {
-    navItems.push({
-      to: '/tenants',
-      label: 'Tenants',
-      icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+  if (adminItems.length > 0) {
+    visibleGroups.push({ key: 'admin', label: 'Admin', items: adminItems });
+  }
+
+  function groupHasActiveRoute(group: NavGroup): boolean {
+    return group.items.some(item => {
+      if (item.to === '/') return location.pathname === '/';
+      return location.pathname.startsWith(item.to);
     });
   }
 
@@ -67,7 +146,6 @@ export default function Layout() {
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <header className="h-14 shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 z-30">
-        {/* Left: burger + logo + title */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -94,7 +172,6 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Right: username + role + theme toggle + logout */}
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2">
             <span className="text-sm text-gray-700 dark:text-gray-200">{user?.username}</span>
@@ -132,7 +209,6 @@ export default function Layout() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
         {sidebarOpen && (
           <aside className="w-60 shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
             {/* Tenant selector */}
@@ -166,26 +242,80 @@ export default function Layout() {
               </div>
             )}
 
-            <nav className="flex-1 p-3 space-y-1">
-              {navItems.map(item => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                      isActive
-                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
-                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                    }`
-                  }
-                >
-                  <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
-                  </svg>
-                  {item.label}
-                </NavLink>
-              ))}
+            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+              {/* Dashboard — always visible */}
+              <NavLink
+                to={DASHBOARD_ITEM.to}
+                end
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    isActive
+                      ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`
+                }
+              >
+                <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={DASHBOARD_ITEM.icon} />
+                </svg>
+                {DASHBOARD_ITEM.label}
+              </NavLink>
+
+              {/* Grouped navigation */}
+              {visibleGroups.map(group => {
+                const isExpanded = expandedGroups[group.key] ?? false;
+                const hasActive = groupHasActiveRoute(group);
+
+                return (
+                  <div key={group.key} className="pt-2">
+                    <button
+                      onClick={() => toggleGroup(group.key)}
+                      className="w-full flex items-center justify-between px-3 py-1 group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
+                          {group.label}
+                        </span>
+                        {!isExpanded && hasActive && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        )}
+                      </div>
+                      <svg
+                        className={`w-3 h-3 text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-1 space-y-0.5">
+                        {group.items.map(item => (
+                          <NavLink
+                            key={item.to}
+                            to={item.to}
+                            end={item.to === '/'}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                                isActive
+                                  ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                              }`
+                            }
+                          >
+                            <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
+                            </svg>
+                            {item.label}
+                          </NavLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </nav>
 
             <div className="px-3 pb-3">
@@ -196,7 +326,6 @@ export default function Layout() {
           </aside>
         )}
 
-        {/* Main content */}
         <main className="flex-1 overflow-auto">
           <div className="p-6">
             <Outlet />

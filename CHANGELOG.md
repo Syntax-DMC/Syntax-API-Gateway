@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-20
+
+### Changed
+
+- **Sidebar Navigation** — Reorganized flat nav list (11+ items) into collapsible groups: Setup, APIs, Tools, Admin. Group expand/collapse state persists in localStorage. Collapsed groups show a blue dot indicator when a child route is active
+- **Connection Wizard** — Replaced 4-step wizard with a unified 5-step onboarding flow: SAP Connection (URL + OAuth2 test + create) → API Key (generate + copy) → API Selection (searchable checklist with bulk assign) → Parameters (set defaults for plant, workcenter, etc.) → Output (Tools JSON + Prompt Spec generated client-side)
+
+### Added
+
+- `POST /api/connections/:id/assign-apis` — Bulk assign multiple API definitions to a connection in one request
+- Wizard Step 5 generates toolkit JSON and prompt specification directly from selected APIs and parameter defaults, no Export Center visit needed
+
 ## [1.6.0] - 2026-02-20
 
 ### Added

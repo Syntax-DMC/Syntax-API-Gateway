@@ -5,6 +5,7 @@ import { URL } from 'url';
 import { authMiddleware, requireActiveTenant } from '../middleware/auth';
 import { connectionService } from '../services/connection.service';
 import { sapTokenService } from '../services/sap-token.service';
+import { assignmentService } from '../services/assignment.service';
 import { validateUpstreamUrlDns } from '../utils/url-validator';
 import { AuthenticatedRequest } from '../types';
 
@@ -260,6 +261,44 @@ router.post('/:id/test', async (req: AuthenticatedRequest, res: Response) => {
     }
   } catch (err) {
     console.error('Test connection error:', (err as Error).message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /:id/assign-apis — Bulk assign multiple APIs to this connection
+router.post('/:id/assign-apis', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { apiDefinitionIds } = req.body;
+    if (!Array.isArray(apiDefinitionIds) || apiDefinitionIds.length === 0) {
+      res.status(400).json({ error: 'apiDefinitionIds array is required and must not be empty' });
+      return;
+    }
+
+    const conn = await connectionService.getById(
+      req.params.id as string,
+      req.user!.userId,
+      req.user!.activeTenantId!
+    );
+    if (!conn) {
+      res.status(404).json({ error: 'Connection not found' });
+      return;
+    }
+
+    const result = await assignmentService.bulkAssign(
+      req.user!.activeTenantId!,
+      req.user!.userId,
+      req.params.id as string,
+      apiDefinitionIds
+    );
+
+    res.json(result);
+  } catch (err) {
+    const message = (err as Error).message;
+    if (message.includes('not found')) {
+      res.status(404).json({ error: message });
+      return;
+    }
+    console.error('Bulk assign error:', message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
