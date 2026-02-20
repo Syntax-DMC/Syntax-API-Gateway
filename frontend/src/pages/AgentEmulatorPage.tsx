@@ -441,6 +441,15 @@ export default function AgentEmulatorPage() {
             </div>
           )}
 
+          {/* Agent Call — show the equivalent cURL */}
+          {result && (
+            <AgentCallBlock
+              slugs={Array.from(selectedSlugs)}
+              context={buildContext()}
+              results={result.results}
+            />
+          )}
+
           {/* Response */}
           {result && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -681,6 +690,105 @@ function Spinner({ label }: { label?: string }) {
       </svg>
       {label}
     </span>
+  );
+}
+
+function AgentCallBlock({
+  slugs,
+  context,
+  results,
+}: {
+  slugs: string[];
+  context: Record<string, string>;
+  results: OrchestratorCallResult[];
+}) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const [showDirect, setShowDirect] = useState(false);
+
+  const baseUrl = window.location.origin;
+
+  // Orchestrator cURL
+  const body = JSON.stringify({ slugs, context }, null, 2);
+  const orchestratorCurl = `curl -X POST ${baseUrl}/gw/query \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: sdmg_YOUR_TOKEN_HERE" \\
+  -d '${body}'`;
+
+  // Direct cURLs per API
+  const directCurls = results
+    .filter((r) => r.requestPath)
+    .map((r) => {
+      const method = r.method || 'GET';
+      const methodFlag = method === 'GET' ? '' : ` -X ${method}`;
+      return {
+        slug: r.slug,
+        method,
+        curl: `curl${methodFlag} "${baseUrl}/gw/dm${r.requestPath}" \\
+  -H "x-api-key: sdmg_YOUR_TOKEN_HERE"`,
+      };
+    });
+
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">
+          {t('emulator.agentCall')}
+        </h2>
+        <div className="flex items-center gap-2">
+          {directCurls.length > 0 && (
+            <button
+              onClick={() => setShowDirect(!showDirect)}
+              className="text-xs px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              {showDirect ? t('emulator.showOrchestrator') : t('emulator.showDirect')}
+            </button>
+          )}
+          <button
+            onClick={() => handleCopy(showDirect ? directCurls.map((d) => d.curl).join('\n\n') : orchestratorCurl)}
+            className="text-xs px-2.5 py-1 rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition-colors"
+          >
+            {copied ? t('common.copied') : t('common.copy')}
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {!showDirect ? (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">POST</span>
+              <code className="text-xs text-gray-500 dark:text-gray-400 font-mono">/gw/query</code>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">Orchestrator</span>
+            </div>
+            <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-all">
+              {orchestratorCurl}
+            </pre>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {directCurls.map((d) => (
+              <div key={d.slug}>
+                <div className="flex items-center gap-2 mb-1">
+                  <MethodBadge method={d.method} />
+                  <code className="text-xs text-gray-500 dark:text-gray-400 font-mono">{d.slug}</code>
+                </div>
+                <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
+                  {d.curl}
+                </pre>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

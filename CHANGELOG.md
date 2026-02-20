@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.14.3] - 2026-02-20
 
+### Added
+
+- **Agent Emulator: Agent Call panel** — After testing, shows the equivalent cURL commands an agent would use. Toggle between Orchestrator (`POST /gw/query`) and direct per-API calls (`/gw/dm/...`). Copy button for easy sharing.
+
 ### Changed
 
 - **Agent Emulator: split context vs API-specific parameters** — Context parameters (plant, sfc, workcenter, etc.) are shown in a compact inline grid at the top with preset save/load. API-specific parameters (like `includeSfcSteps`) are shown as detailed cards with description, type, and required badge below.
