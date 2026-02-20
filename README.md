@@ -217,6 +217,8 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | POST | `/api/connections/test-oauth` | Pre-save OAuth2 credential test |
 | POST | `/api/connections/test-agent` | Pre-save agent endpoint test |
 | POST | `/api/connections/:id/assign-apis` | Bulk assign APIs to connection |
+| GET | `/api/connections/:id/assignments` | List assigned API definition IDs |
+| POST | `/api/connections/:id/replace-apis` | Replace all API assignments |
 
 ### Gateway Proxy (`/gw`)
 

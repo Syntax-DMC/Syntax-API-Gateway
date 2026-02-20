@@ -183,15 +183,9 @@ function generatePromptSpec(
 export default function ConnectionsPage() {
   const { data: connections, reload } = useApi<SapConnection[]>('/api/connections');
 
-  // ── Edit modal state ──
-  const [showEdit, setShowEdit] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<FormData>(emptyForm);
-  const [editError, setEditError] = useState('');
-  const [editSaving, setEditSaving] = useState(false);
-
   // ── Wizard state ──
   const [showWizard, setShowWizard] = useState(false);
+  const [wizardMode, setWizardMode] = useState<'create' | 'edit'>('create');
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [wizardForm, setWizardForm] = useState<FormData>(emptyForm);
   const [wizardError, setWizardError] = useState('');
@@ -241,47 +235,10 @@ export default function ConnectionsPage() {
     }
   }, [showWizard, wizardStep, availableApis.length, apisLoading]);
 
-  // ── Edit modal ─────────────────────────────────────────
-
-  function openEdit(conn: SapConnection) {
-    setEditForm({
-      name: conn.name,
-      sapBaseUrl: conn.sap_base_url,
-      tokenUrl: conn.token_url,
-      clientId: conn.client_id,
-      clientSecret: '',
-      agentApiUrl: conn.agent_api_url || '',
-      agentApiKey: '',
-    });
-    setEditId(conn.id);
-    setShowEdit(true);
-    setEditError('');
-  }
-
-  async function handleEditSubmit() {
-    setEditSaving(true);
-    setEditError('');
-    try {
-      const body: Record<string, string | undefined> = { ...editForm };
-      if (!body.clientSecret) delete body.clientSecret;
-      if (!body.agentApiKey) delete body.agentApiKey;
-      if (!body.agentApiUrl) { delete body.agentApiUrl; delete body.agentApiKey; }
-      await api(`/api/connections/${editId}`, 'PATCH', body);
-      setShowEdit(false);
-      reload();
-    } catch (err) {
-      setEditError((err as Error).message);
-    } finally {
-      setEditSaving(false);
-    }
-  }
-
-  const editSet = (field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setEditForm(f => ({ ...f, [field]: e.target.value }));
-
   // ── Wizard ─────────────────────────────────────────────
 
   function openWizard() {
+    setWizardMode('create');
     setWizardForm(emptyForm);
     setWizardStep(1);
     setStepTests({});
@@ -303,12 +260,53 @@ export default function ConnectionsPage() {
     setOutputCopied(false);
   }
 
+  async function openWizardForEdit(conn: SapConnection) {
+    setWizardMode('edit');
+    setWizardForm({
+      name: conn.name,
+      sapBaseUrl: conn.sap_base_url,
+      tokenUrl: conn.token_url,
+      clientId: conn.client_id,
+      clientSecret: '',
+      agentApiUrl: conn.agent_api_url || '',
+      agentApiKey: '',
+    });
+    setWizardStep(1);
+    setStepTests({});
+    setWizardError('');
+    setShowWizard(true);
+    setShowAgentConfig(!!conn.agent_api_url);
+    setCreatedConnectionId(conn.id);
+    setCreatedToken(null);
+    setTokenLabel(`${conn.name} Key`);
+    setTokenCopied(false);
+    setAvailableApis([]);
+    setSelectedApiIds(new Set());
+    setApiSearch('');
+    setMethodFilter('');
+    setFlowPreview(null);
+    setFlowLoading(false);
+    setParamDefaults({});
+    setOutputTab('json');
+    setOutputCopied(false);
+
+    // Pre-load existing API assignments
+    try {
+      const data = await api<{ apiDefinitionIds: string[] }>(
+        `/api/connections/${conn.id}/assignments`
+      );
+      setSelectedApiIds(new Set(data.apiDefinitionIds));
+    } catch {
+      // Non-fatal — user can re-select
+    }
+  }
+
   function closeWizard() {
-    if (createdConnectionId && wizardStep < 6) {
+    if (wizardMode === 'create' && createdConnectionId && wizardStep < 6) {
       if (!confirm('The connection was already created. Close the wizard anyway?')) return;
     }
     setShowWizard(false);
-    if (createdConnectionId) reload();
+    reload();
   }
 
   const wizSet = (field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -316,11 +314,14 @@ export default function ConnectionsPage() {
     setStepTests(prev => { const c = { ...prev }; delete c[1]; return c; });
   };
 
-  // Step 1: Test URL + OAuth + create connection
+  // Step 1: Test URL + OAuth + create/update connection
   async function handleStep1() {
     const f = wizardForm;
-    if (!f.name.trim() || !f.sapBaseUrl.trim() || !f.tokenUrl.trim() || !f.clientId.trim() || !f.clientSecret.trim()) {
-      setStepTests(p => ({ ...p, 1: { status: 'error', message: 'All fields are required' } }));
+    const isEdit = wizardMode === 'edit';
+
+    // In create mode all fields required; in edit mode secret can be blank (keep existing)
+    if (!f.name.trim() || !f.sapBaseUrl.trim() || !f.tokenUrl.trim() || !f.clientId.trim() || (!isEdit && !f.clientSecret.trim())) {
+      setStepTests(p => ({ ...p, 1: { status: 'error', message: isEdit ? 'Name, URL, Token URL and Client ID are required' : 'All fields are required' } }));
       return;
     }
     setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Testing URL reachability...' } }));
@@ -333,35 +334,55 @@ export default function ConnectionsPage() {
         return;
       }
 
-      setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Testing OAuth2 credentials...' } }));
-
-      // Test OAuth
-      const oauthRes = await api<{ status: string; expiresIn?: number; message?: string }>(
-        '/api/connections/test-oauth', 'POST',
-        { token_url: f.tokenUrl, client_id: f.clientId, client_secret: f.clientSecret }
-      );
-      if (oauthRes.status !== 'ok') {
-        setStepTests(p => ({ ...p, 1: { status: 'error', message: oauthRes.message || 'OAuth2 failed' } }));
-        return;
+      // Test OAuth — only if secret is provided (in edit mode it may be blank = keep existing)
+      let oauthExpiresIn: number | undefined;
+      if (f.clientSecret.trim()) {
+        setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Testing OAuth2 credentials...' } }));
+        const oauthRes = await api<{ status: string; expiresIn?: number; message?: string }>(
+          '/api/connections/test-oauth', 'POST',
+          { token_url: f.tokenUrl, client_id: f.clientId, client_secret: f.clientSecret }
+        );
+        if (oauthRes.status !== 'ok') {
+          setStepTests(p => ({ ...p, 1: { status: 'error', message: oauthRes.message || 'OAuth2 failed' } }));
+          return;
+        }
+        oauthExpiresIn = oauthRes.expiresIn;
       }
 
-      setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Creating connection...' } }));
-
-      // Create connection
-      const body: Record<string, string | undefined> = {
-        name: f.name, sapBaseUrl: f.sapBaseUrl, tokenUrl: f.tokenUrl,
-        clientId: f.clientId, clientSecret: f.clientSecret,
-      };
-      if (f.agentApiUrl) {
-        body.agentApiUrl = f.agentApiUrl;
-        if (f.agentApiKey) body.agentApiKey = f.agentApiKey;
+      if (isEdit && createdConnectionId) {
+        // Update existing connection
+        setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Updating connection...' } }));
+        const body: Record<string, string | undefined> = {
+          name: f.name, sapBaseUrl: f.sapBaseUrl, tokenUrl: f.tokenUrl, clientId: f.clientId,
+        };
+        if (f.clientSecret) body.clientSecret = f.clientSecret;
+        if (f.agentApiUrl) {
+          body.agentApiUrl = f.agentApiUrl;
+          if (f.agentApiKey) body.agentApiKey = f.agentApiKey;
+        } else {
+          body.agentApiUrl = '';
+        }
+        await api(`/api/connections/${createdConnectionId}`, 'PATCH', body);
+        const detail = oauthExpiresIn ? `Token expires in ${oauthExpiresIn}s` : 'Credentials unchanged';
+        setStepTests(p => ({ ...p, 1: { status: 'ok', message: 'Connection updated', detail } }));
+        setWizardStep(2);
+      } else {
+        // Create new connection
+        setStepTests(p => ({ ...p, 1: { status: 'testing', message: 'Creating connection...' } }));
+        const body: Record<string, string | undefined> = {
+          name: f.name, sapBaseUrl: f.sapBaseUrl, tokenUrl: f.tokenUrl,
+          clientId: f.clientId, clientSecret: f.clientSecret,
+        };
+        if (f.agentApiUrl) {
+          body.agentApiUrl = f.agentApiUrl;
+          if (f.agentApiKey) body.agentApiKey = f.agentApiKey;
+        }
+        const conn = await api<SapConnection>('/api/connections', 'POST', body);
+        setCreatedConnectionId(conn.id);
+        setTokenLabel(`${f.name} Key`);
+        setStepTests(p => ({ ...p, 1: { status: 'ok', message: 'Connection created', detail: `Token expires in ${oauthExpiresIn}s` } }));
+        setWizardStep(2);
       }
-
-      const conn = await api<SapConnection>('/api/connections', 'POST', body);
-      setCreatedConnectionId(conn.id);
-      setTokenLabel(`${f.name} Key`);
-      setStepTests(p => ({ ...p, 1: { status: 'ok', message: 'Connection created', detail: `Token expires in ${oauthRes.expiresIn}s` } }));
-      setWizardStep(2);
     } catch (err) {
       setStepTests(p => ({ ...p, 1: { status: 'error', message: (err as Error).message } }));
     }
@@ -434,11 +455,14 @@ export default function ConnectionsPage() {
   }
 
   async function handleStep3Advance() {
-    if (selectedApiIds.size === 0 || !createdConnectionId) return;
+    if (!createdConnectionId || (wizardMode === 'create' && selectedApiIds.size === 0)) return;
     setWizardSaving(true);
     setWizardError('');
     try {
-      await api(`/api/connections/${createdConnectionId}/assign-apis`, 'POST', {
+      const endpoint = wizardMode === 'edit'
+        ? `/api/connections/${createdConnectionId}/replace-apis`
+        : `/api/connections/${createdConnectionId}/assign-apis`;
+      await api(endpoint, 'POST', {
         apiDefinitionIds: Array.from(selectedApiIds),
       });
       // Move to Flow Designer step and load preview
@@ -653,9 +677,9 @@ export default function ConnectionsPage() {
       {/* ── Wizard Modal ─────────────────────────────── */}
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-h-[90vh] overflow-y-auto p-6 transition-all ${wizardStep === 4 ? 'max-w-5xl' : isWideStep ? 'max-w-3xl' : 'max-w-lg'}`}>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">New Connection</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Guided setup — connection, token, API selection, and agent output</p>
+          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-h-[90vh] overflow-y-auto p-6 transition-all ${wizardStep === 4 ? 'max-w-5xl' : wizardStep === 3 ? 'max-w-4xl' : isWideStep ? 'max-w-3xl' : 'max-w-lg'}`}>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{wizardMode === 'edit' ? 'Edit Connection' : 'New Connection'}</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{wizardMode === 'edit' ? 'Update connection, API assignments, and regenerate output' : 'Guided setup — connection, token, API selection, and agent output'}</p>
 
             <StepIndicator />
 
@@ -667,7 +691,7 @@ export default function ConnectionsPage() {
                 <Field label="Token URL" value={wizardForm.tokenUrl} onChange={wizSet('tokenUrl')} placeholder="https://...authentication.../oauth/token" />
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Client ID" value={wizardForm.clientId} onChange={wizSet('clientId')} />
-                  <Field label="Client Secret" value={wizardForm.clientSecret} onChange={wizSet('clientSecret')} type="password" />
+                  <Field label={wizardMode === 'edit' ? 'Client Secret (leave empty to keep)' : 'Client Secret'} value={wizardForm.clientSecret} onChange={wizSet('clientSecret')} type="password" />
                 </div>
 
                 {/* Agent config disclosure */}
@@ -683,7 +707,7 @@ export default function ConnectionsPage() {
                 {showAgentConfig && (
                   <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-gray-700">
                     <Field label="Agent API URL" value={wizardForm.agentApiUrl} onChange={wizSet('agentApiUrl')} placeholder="https://studio-api.ai.syntax-rnd.com" />
-                    <Field label="Agent API Key" value={wizardForm.agentApiKey} onChange={wizSet('agentApiKey')} type="password" />
+                    <Field label={wizardMode === 'edit' ? 'Agent API Key (leave empty to keep)' : 'Agent API Key'} value={wizardForm.agentApiKey} onChange={wizSet('agentApiKey')} type="password" />
                   </div>
                 )}
 
@@ -695,7 +719,7 @@ export default function ConnectionsPage() {
                     disabled={stepTests[1]?.status === 'testing'}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    {stepTests[1]?.status === 'testing' ? 'Testing...' : 'Test & Create'}
+                    {stepTests[1]?.status === 'testing' ? 'Testing...' : wizardMode === 'edit' ? 'Test & Update' : 'Test & Create'}
                   </button>
                 </div>
               </div>
@@ -738,10 +762,10 @@ export default function ConnectionsPage() {
                   <div />
                   <button
                     onClick={() => setWizardStep(3)}
-                    disabled={!createdToken}
+                    disabled={wizardMode === 'create' && !createdToken}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    Continue
+                    {wizardMode === 'edit' && !createdToken ? 'Skip' : 'Continue'}
                   </button>
                 </div>
               </div>
@@ -790,7 +814,7 @@ export default function ConnectionsPage() {
                     ) : filteredApis().map(a => (
                       <label
                         key={a.id}
-                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${
+                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${
                           selectedApiIds.has(a.id) ? 'bg-blue-500/5' : ''
                         }`}
                       >
@@ -798,14 +822,28 @@ export default function ConnectionsPage() {
                           type="checkbox"
                           checked={selectedApiIds.has(a.id)}
                           onChange={() => toggleApi(a.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
                         />
-                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${METHOD_COLORS[a.method] || 'bg-gray-500/15 text-gray-400'}`}>
-                          {a.method}
-                        </span>
-                        <span className="font-mono text-xs text-gray-900 dark:text-white">{a.slug}</span>
-                        <span className="text-xs text-gray-400 truncate">{a.name}</span>
-                        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{a.path}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded shrink-0 ${METHOD_COLORS[a.method] || 'bg-gray-500/15 text-gray-400'}`}>
+                              {a.method}
+                            </span>
+                            <span className="font-mono text-xs font-medium text-gray-900 dark:text-white">{a.slug}</span>
+                            <span className="text-xs text-gray-400 truncate">{a.name}</span>
+                          </div>
+                          <div className="mt-1 font-mono text-[11px] text-gray-500 dark:text-gray-400">{a.path}</div>
+                          {a.description && <div className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500 line-clamp-2">{a.description}</div>}
+                          {a.query_params.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {a.query_params.map(p => (
+                                <span key={p.name} className={`px-1.5 py-0.5 text-[10px] rounded font-mono ${p.required ? 'bg-amber-500/10 text-amber-500' : 'bg-gray-500/10 text-gray-400'}`}>
+                                  {p.name}{p.required ? '*' : ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </label>
                     ))}
                   </div>
@@ -817,10 +855,14 @@ export default function ConnectionsPage() {
                   <button onClick={() => setWizardStep(2)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
                   <button
                     onClick={handleStep3Advance}
-                    disabled={selectedApiIds.size === 0 || wizardSaving}
+                    disabled={(wizardMode === 'create' && selectedApiIds.size === 0) || wizardSaving}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    {wizardSaving ? 'Assigning...' : `Assign ${selectedApiIds.size} API${selectedApiIds.size !== 1 ? 's' : ''} & Continue`}
+                    {wizardSaving
+                      ? (wizardMode === 'edit' ? 'Updating...' : 'Assigning...')
+                      : wizardMode === 'edit'
+                        ? `Update APIs (${selectedApiIds.size} selected) & Continue`
+                        : `Assign ${selectedApiIds.size} API${selectedApiIds.size !== 1 ? 's' : ''} & Continue`}
                   </button>
                 </div>
               </div>
@@ -1158,34 +1200,6 @@ export default function ConnectionsPage() {
         </div>
       )}
 
-      {/* ── Edit Modal ────────────────────────────────── */}
-      {showEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Edit Connection</h2>
-            {editError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{editError}</div>}
-
-            <Field label="Name" value={editForm.name} onChange={editSet('name')} placeholder="Haribo Prod" />
-            <Field label="SAP Base URL" value={editForm.sapBaseUrl} onChange={editSet('sapBaseUrl')} placeholder="https://api.eu20.dmc.cloud.sap" />
-            <Field label="Token URL" value={editForm.tokenUrl} onChange={editSet('tokenUrl')} placeholder="https://...authentication.../oauth/token" />
-            <Field label="Client ID" value={editForm.clientId} onChange={editSet('clientId')} />
-            <Field label="Client Secret (leave empty to keep)" value={editForm.clientSecret} onChange={editSet('clientSecret')} type="password" />
-
-            <hr className="border-gray-200 dark:border-gray-700" />
-            <p className="text-xs text-gray-400 dark:text-gray-500">Agent configuration (optional)</p>
-            <Field label="Agent API URL" value={editForm.agentApiUrl} onChange={editSet('agentApiUrl')} placeholder="https://studio-api.ai.syntax-rnd.com" />
-            <Field label="Agent API Key (leave empty to keep)" value={editForm.agentApiKey} onChange={editSet('agentApiKey')} type="password" />
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setShowEdit(false)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
-              <button onClick={handleEditSubmit} disabled={editSaving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                {editSaving ? 'Saving...' : 'Update'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Table ─────────────────────────────────────── */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
@@ -1223,7 +1237,7 @@ export default function ConnectionsPage() {
                       <Btn onClick={() => handleTest(conn.id)}>
                         {testResult[conn.id] === 'testing...' ? '...' : testResult[conn.id] === 'ok' ? 'OK' : 'Test'}
                       </Btn>
-                      <Btn onClick={() => openEdit(conn)}>Edit</Btn>
+                      <Btn onClick={() => openWizardForEdit(conn)}>Edit</Btn>
                       <Btn onClick={() => handleDelete(conn.id, conn.name)} danger>Delete</Btn>
                     </div>
                   </td>

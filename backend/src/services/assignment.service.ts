@@ -98,6 +98,38 @@ class AssignmentService {
 
     return { assigned, skipped };
   }
+
+  async replaceAssignments(
+    tenantId: string,
+    userId: string,
+    connectionId: string,
+    apiDefIds: string[]
+  ): Promise<{ assigned: number; removed: number }> {
+    const { rows: connRows } = await pool.query(
+      'SELECT id FROM sap_connections WHERE id = $1 AND tenant_id = $2',
+      [connectionId, tenantId]
+    );
+    if (connRows.length === 0) throw new Error('Connection not found');
+
+    const { rowCount } = await pool.query(
+      'DELETE FROM connection_api_assignments WHERE sap_connection_id = $1 AND tenant_id = $2',
+      [connectionId, tenantId]
+    );
+
+    let assigned = 0;
+    for (const apiDefId of apiDefIds) {
+      await pool.query(
+        `INSERT INTO connection_api_assignments
+          (sap_connection_id, api_definition_id, tenant_id, created_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (sap_connection_id, api_definition_id) DO NOTHING`,
+        [connectionId, apiDefId, tenantId, userId]
+      );
+      assigned++;
+    }
+
+    return { assigned, removed: rowCount ?? 0 };
+  }
 }
 
 export const assignmentService = new AssignmentService();

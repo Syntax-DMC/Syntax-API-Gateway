@@ -29,8 +29,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8">
           <div className="text-center mb-8">
-            <img src="/login_logo.svg" alt="Syntax" className="h-12 w-auto mb-4" />
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Syntax DM Gateway</h1>
+            <img src="/login_logo.svg" alt="Syntax" className="mx-auto w-48 mb-4" />
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Syntax API Gateway</h1>
             <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Sign in to your account</p>
           </div>
 

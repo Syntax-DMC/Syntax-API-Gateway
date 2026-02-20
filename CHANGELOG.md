@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-02-20
+
+### Added
+
+- **Edit Connection via Wizard** — Clicking "Edit" on a connection now opens the same 6-step wizard (pre-filled with existing data) instead of the flat edit modal. Supports updating credentials, reassigning APIs, reviewing the flow graph, and regenerating output
+- `GET /api/connections/:id/assignments` — Returns assigned API definition IDs for a connection
+- `POST /api/connections/:id/replace-apis` — Replace all API assignments for a connection (used in edit mode)
+- **Rich API List in Wizard** — Step 3 now shows multi-line cards with slug, description, endpoint path, and parameter tags (required params highlighted in amber)
+
+### Changed
+
+- **Login Page** — Title changed to "Syntax API Gateway", logo centered and sized to match heading width
+
+### Removed
+
+- Old flat edit modal replaced by wizard edit mode
+
 ## [1.8.1] - 2026-02-20
 
 ### Fixed

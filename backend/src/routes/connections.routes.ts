@@ -265,6 +265,29 @@ router.post('/:id/test', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
+// GET /:id/assignments — Return assigned API definition IDs for a connection
+router.get('/:id/assignments', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const conn = await connectionService.getById(
+      req.params.id as string,
+      req.user!.userId,
+      req.user!.activeTenantId!
+    );
+    if (!conn) {
+      res.status(404).json({ error: 'Connection not found' });
+      return;
+    }
+    const assignments = await assignmentService.listByConnection(
+      req.params.id as string,
+      req.user!.activeTenantId!
+    );
+    res.json({ apiDefinitionIds: assignments.map(a => a.api_definition_id) });
+  } catch (err) {
+    console.error('List assignments error:', (err as Error).message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /:id/assign-apis — Bulk assign multiple APIs to this connection
 router.post('/:id/assign-apis', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -299,6 +322,44 @@ router.post('/:id/assign-apis', async (req: AuthenticatedRequest, res: Response)
       return;
     }
     console.error('Bulk assign error:', message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /:id/replace-apis — Replace all API assignments for this connection
+router.post('/:id/replace-apis', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { apiDefinitionIds } = req.body;
+    if (!Array.isArray(apiDefinitionIds)) {
+      res.status(400).json({ error: 'apiDefinitionIds must be an array' });
+      return;
+    }
+
+    const conn = await connectionService.getById(
+      req.params.id as string,
+      req.user!.userId,
+      req.user!.activeTenantId!
+    );
+    if (!conn) {
+      res.status(404).json({ error: 'Connection not found' });
+      return;
+    }
+
+    const result = await assignmentService.replaceAssignments(
+      req.user!.activeTenantId!,
+      req.user!.userId,
+      req.params.id as string,
+      apiDefinitionIds
+    );
+
+    res.json(result);
+  } catch (err) {
+    const message = (err as Error).message;
+    if (message.includes('not found')) {
+      res.status(404).json({ error: message });
+      return;
+    }
+    console.error('Replace assignments error:', message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
