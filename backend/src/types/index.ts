@@ -211,3 +211,43 @@ export interface ExecutionPlan {
   warnings: string[];
   errors: string[];
 }
+
+// ── Export types ──────────────────────────────────────────
+export type ExportFormat = 'openapi3_json' | 'openapi3_yaml' | 'swagger2_json';
+export type ExportScope = 'all' | 'assigned';
+
+export interface ExportOptions {
+  connectionId: string;
+  tenantId: string;
+  format: ExportFormat;
+  scope: ExportScope;
+  gatewayUrl: string;
+}
+
+export interface ExportLog {
+  id: number;
+  tenant_id: string;
+  user_id: string;
+  sap_connection_id: string;
+  format: ExportFormat;
+  scope: ExportScope;
+  api_count: number;
+  created_at: Date;
+}
+
+export interface ConnectionExportMeta {
+  id: string;
+  name: string;
+  sap_base_url: string;
+  is_active: boolean;
+  has_agent_config: boolean;
+  assigned_api_count: number;
+}
+
+export interface ToolkitConfig {
+  name: string;
+  description: string;
+  headers: Record<string, string>;
+  base_url: string;
+  show_intermediate_steps: boolean;
+}

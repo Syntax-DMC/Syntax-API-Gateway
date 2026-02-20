@@ -248,3 +248,31 @@ export interface OrchestratorResult {
   layers?: ExecutionLayer[];
   results: OrchestratorCallResult[];
 }
+
+// ── Export types ──────────────────────────────────────────
+export type ExportFormat = 'openapi3_json' | 'openapi3_yaml' | 'swagger2_json';
+export type ExportScope = 'all' | 'assigned';
+
+export interface ConnectionExportMeta {
+  id: string;
+  name: string;
+  sap_base_url: string;
+  is_active: boolean;
+  has_agent_config: boolean;
+  assigned_api_count: number;
+}
+
+export interface ToolkitConfig {
+  name: string;
+  description: string;
+  headers: Record<string, string>;
+  base_url: string;
+  show_intermediate_steps: boolean;
+}
+
+export interface ExportPreviewResponse {
+  content: string;
+  contentType: string;
+  filename: string;
+  apiCount: number;
+}
