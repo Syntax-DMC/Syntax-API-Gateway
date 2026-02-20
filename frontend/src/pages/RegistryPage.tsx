@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
-import { useAuth } from '../hooks/useAuth';
 import type { ApiDefinition, ImportPreview, ImportResult } from '../types';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -31,8 +30,6 @@ const emptyForm: CreateForm = {
 
 export default function RegistryPage() {
   const navigate = useNavigate();
-  const { user, activeTenantRole } = useAuth();
-  const isAdmin = user?.isSuperadmin || activeTenantRole === 'admin';
 
   // Filters
   const [search, setSearch] = useState('');
@@ -86,9 +83,9 @@ export default function RegistryPage() {
   }
 
   // Import handlers
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const [dragging, setDragging] = useState(false);
+
+  function readFiles(files: FileList) {
     const pending: Promise<{ name: string; content: string }>[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -103,7 +100,21 @@ export default function RegistryPage() {
     Promise.all(pending).then(results => {
       setSpecFiles(prev => [...prev, ...results]);
     });
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    readFiles(files);
     e.target.value = '';
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      readFiles(e.dataTransfer.files);
+    }
   }
 
   function removeFile(index: number) {
@@ -179,6 +190,7 @@ export default function RegistryPage() {
     setImportResults([]);
     setImportError('');
     setImportProgress('');
+    setDragging(false);
   }
 
   async function handleDelete(id: string, name: string) {
@@ -199,16 +211,14 @@ export default function RegistryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">API Registry</h1>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowImport(true)} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors">
-              Import OpenAPI
-            </button>
-            <button onClick={() => { setCreateForm(emptyForm); setCreateError(''); setShowCreate(true); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-              New Definition
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowImport(true)} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors">
+            Import OpenAPI
+          </button>
+          <button onClick={() => { setCreateForm(emptyForm); setCreateError(''); setShowCreate(true); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+            New Definition
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -252,12 +262,12 @@ export default function RegistryPage() {
                 <th className="px-5 py-3 font-medium">Tags</th>
                 <th className="px-5 py-3 font-medium">Version</th>
                 <th className="px-5 py-3 font-medium">Status</th>
-                {isAdmin && <th className="px-5 py-3 font-medium">Actions</th>}
+                <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {!definitions?.length && (
-                <tr><td colSpan={isAdmin ? 8 : 7} className="px-5 py-8 text-center text-gray-400 dark:text-gray-500">No API definitions yet</td></tr>
+                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400 dark:text-gray-500">No API definitions yet</td></tr>
               )}
               {definitions?.map(def => (
                 <tr
@@ -288,16 +298,14 @@ export default function RegistryPage() {
                       {def.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  {isAdmin && (
-                    <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleDelete(def.id, def.name)}
-                        className="px-2.5 py-1 text-xs rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  )}
+                  <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleDelete(def.id, def.name)}
+                      className="px-2.5 py-1 text-xs rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -355,13 +363,35 @@ export default function RegistryPage() {
               <>
                 <div>
                   <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Upload Files</label>
-                  <input
-                    type="file"
-                    accept=".json,.yaml,.yml"
-                    multiple
-                    onChange={handleFileUpload}
-                    className="w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300"
-                  />
+                  <div
+                    onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={handleDrop}
+                    onClick={() => document.getElementById('spec-file-input')?.click()}
+                    className={`relative flex flex-col items-center justify-center gap-2 px-6 py-8 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+                      dragging
+                        ? 'border-blue-500 bg-blue-500/10'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 bg-gray-50 dark:bg-gray-700/40'
+                    }`}
+                  >
+                    <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                    </svg>
+                    <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">
+                      Drop files here or <span className="text-blue-500">browse</span>
+                    </div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
+                      Supports multiple .json, .yaml, .yml files
+                    </div>
+                    <input
+                      id="spec-file-input"
+                      type="file"
+                      accept=".json,.yaml,.yml"
+                      multiple
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
                 </div>
                 {specFiles.length > 0 && (
                   <div className="space-y-1">

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-20
+
+### Added
+
+- **Version Display** — App version number shown in the sidebar footer, auto-read from package.json via Vite define
+
+### Improved
+
+- **Drag-and-Drop File Upload** — Replaced plain file input in API Registry import with a styled drop zone supporting drag-and-drop and click-to-browse, with clear multi-file messaging
+
 ## [1.2.0] - 2026-02-20
 
 ### Added

@@ -186,6 +186,12 @@ export default function Layout() {
                 </NavLink>
               ))}
             </nav>
+
+            <div className="px-3 pb-3">
+              <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                v{__APP_VERSION__}
+              </div>
+            </div>
           </aside>
         )}
 
