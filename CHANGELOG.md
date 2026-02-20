@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-20
+
+### Added
+
+- **Use-Case Templates** — Higher-level "recipe" abstraction that groups multiple API calls into named templates (e.g. shift handover, downtime report). Templates define required context parameters and API call sequences with `{{variable}}` template resolution
+- Admin CRUD UI for use-case templates with 4-tab editor: Overview, Context Parameters, API Calls builder (same slug picker as Orchestration Workbench), and Test execution
+- Gateway discovery endpoint `GET /gw/use-cases` for AI agents to list available templates
+- Gateway execution endpoint `POST /gw/use-cases/:slug` to run a template with context parameters
+- Template validation (dry-run slug existence check) and admin test execution
+- **Connection Creation Wizard** — 4-step guided flow (Basic Info → OAuth2 → Agent Config → Review) with automatic validation after each step
+- Pre-save test endpoints: `POST /api/connections/test-url`, `test-oauth`, `test-agent` for real connectivity and credential checks before saving
+- Fixed `POST /api/connections/:id/test` stub to actually test OAuth2 token fetch
+- **Export Center: Use-Case Spec** — OpenAPI 3.0 spec for use-case template endpoints (discovery + per-template execution paths)
+- **Export Center: Prompt Spec** — Markdown specification for AI agent system prompts describing available use cases, parameters, and example requests
+- Export Center now has 4 tabs: OpenAPI Spec, Toolkit Config, Use-Case Spec, Prompt Spec
+- Database migration 011 for `use_case_templates` table with JSONB fields for context params and API calls
+
 ## [1.5.0] - 2026-02-20
 
 ### Added

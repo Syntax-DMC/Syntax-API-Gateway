@@ -1,6 +1,7 @@
 import { pool } from '../db/pool';
 import { assignmentService } from './assignment.service';
 import { registryService } from './registry.service';
+import { useCaseService } from './use-case.service';
 import {
   ApiDefinition,
   ExportOptions,
@@ -110,6 +111,205 @@ class ExportService {
         [tenantId, userId, connectionId, format, scope, apiCount]
       )
       .catch((err) => console.error('Export log write failed:', err.message));
+  }
+
+  // ── Use-Case Spec (OpenAPI 3.0) ─────────────────────────
+
+  async generateUseCaseSpec(
+    tenantId: string,
+    gatewayUrl: string
+  ): Promise<{ content: string; contentType: string; filename: string }> {
+    const templates = await useCaseService.listByTenant(tenantId, { is_active: true });
+
+    const spec: Record<string, unknown> = {
+      openapi: '3.0.3',
+      info: {
+        title: 'SAP DM Gateway – Use Cases',
+        description: `Use-case templates for the SAP DM Gateway. Each template groups multiple API calls into a single action.`,
+        version: '1.0.0',
+      },
+      servers: [{ url: gatewayUrl, description: 'API Gateway' }],
+      security: [{ ApiKeyAuth: [] }],
+      paths: {} as Record<string, unknown>,
+      components: {
+        securitySchemes: {
+          ApiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key', description: 'Gateway API key (sdmg_ prefix)' },
+        },
+      },
+    };
+
+    const paths = spec.paths as Record<string, unknown>;
+
+    // GET /gw/use-cases — discovery
+    paths['/gw/use-cases'] = {
+      get: {
+        summary: 'List available use-case templates',
+        operationId: 'listUseCases',
+        description: 'Returns all active use-case templates with their required context parameters.',
+        responses: {
+          '200': {
+            description: 'Array of use-case templates',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      slug: { type: 'string' },
+                      name: { type: 'string' },
+                      description: { type: 'string' },
+                      required_context: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            name: { type: 'string' },
+                            type: { type: 'string' },
+                            description: { type: 'string' },
+                            example: { type: 'string' },
+                            required: { type: 'boolean' },
+                          },
+                        },
+                      },
+                      call_count: { type: 'integer' },
+                      mode: { type: 'string', enum: ['parallel', 'sequential'] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Missing or invalid API key' },
+        },
+      },
+    };
+
+    // POST /gw/use-cases/{slug} — one per template
+    for (const tpl of templates) {
+      const contextProps: Record<string, unknown> = {};
+      const contextRequired: string[] = [];
+      for (const param of tpl.required_context) {
+        contextProps[param.name] = {
+          type: param.type || 'string',
+          ...(param.description && { description: param.description }),
+          ...(param.example && { example: param.example }),
+        };
+        if (param.required) contextRequired.push(param.name);
+      }
+
+      const callSlugs = tpl.calls.map((c) => c.slug);
+
+      paths[`/gw/use-cases/${tpl.slug}`] = {
+        post: {
+          summary: tpl.name,
+          operationId: `executeUseCase_${tpl.slug.replace(/-/g, '_')}`,
+          description: tpl.description || `Execute the "${tpl.name}" use case.`,
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['context'],
+                  properties: {
+                    context: {
+                      type: 'object',
+                      description: 'Context parameters for this use case',
+                      properties: contextProps,
+                      ...(contextRequired.length > 0 && { required: contextRequired }),
+                    },
+                  },
+                },
+                example: {
+                  context: Object.fromEntries(
+                    tpl.required_context.map((p) => [p.name, p.example || `<${p.name}>`])
+                  ),
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: `Returns combined results from: ${callSlugs.join(', ')}` },
+            '400': { description: 'Missing required context parameters' },
+            '404': { description: 'Template not found' },
+          },
+        },
+      };
+    }
+
+    const content = JSON.stringify(spec, null, 2);
+    return {
+      content,
+      contentType: 'application/json; charset=utf-8',
+      filename: 'use-cases-openapi3.json',
+    };
+  }
+
+  // ── Prompt Specification (Markdown) ────────────────────
+
+  async generatePromptSpec(
+    tenantId: string,
+    gatewayUrl: string
+  ): Promise<{ content: string; contentType: string; filename: string }> {
+    const templates = await useCaseService.listByTenant(tenantId, { is_active: true });
+
+    const lines: string[] = [];
+    lines.push('# SAP DM Gateway API Guide');
+    lines.push('');
+    lines.push(`## Base URL: ${gatewayUrl}`);
+    lines.push('');
+    lines.push('## Authentication');
+    lines.push('All requests require an `x-api-key` header with your gateway API key.');
+    lines.push('');
+    lines.push(`## Available Use Cases (${templates.length})`);
+    lines.push('');
+
+    for (const tpl of templates) {
+      lines.push(`### ${tpl.slug}`);
+      lines.push(`**${tpl.name}**`);
+      if (tpl.description) lines.push(tpl.description);
+      lines.push('');
+
+      if (tpl.required_context.length > 0) {
+        lines.push('**Required Parameters:**');
+        for (const param of tpl.required_context) {
+          const reqMark = param.required ? ' (required)' : ' (optional)';
+          const example = param.example ? `, e.g. "${param.example}"` : '';
+          lines.push(`  - \`${param.name}\` (${param.type || 'string'})${reqMark}: ${param.description || 'No description'}${example}`);
+        }
+        lines.push('');
+      }
+
+      lines.push('**Example Request:**');
+      lines.push('```');
+      lines.push(`POST ${gatewayUrl}/gw/use-cases/${tpl.slug}`);
+      lines.push('Headers:');
+      lines.push('  x-api-key: <your_key>');
+      lines.push('  Content-Type: application/json');
+      lines.push('');
+      const exampleContext: Record<string, string> = {};
+      for (const param of tpl.required_context) {
+        exampleContext[param.name] = param.example || `<${param.name}>`;
+      }
+      lines.push(JSON.stringify({ context: exampleContext }, null, 2));
+      lines.push('```');
+      lines.push('');
+
+      const callSlugs = tpl.calls.map((c) => c.slug);
+      lines.push(`**Response:** Returns combined results from: ${callSlugs.join(', ')}`);
+      lines.push(`**Execution Mode:** ${tpl.mode}`);
+      lines.push('');
+      lines.push('---');
+      lines.push('');
+    }
+
+    const content = lines.join('\n');
+    return {
+      content,
+      contentType: 'text/markdown; charset=utf-8',
+      filename: 'prompt-spec.md',
+    };
   }
 
   // ── Private helpers ─────────────────────────────────────

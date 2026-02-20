@@ -11,6 +11,7 @@ const baseNavItems = [
   { to: '/explorer', label: 'Explorer', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3M3 3h18v18H3V3z' },
   { to: '/registry', label: 'API Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
   { to: '/orchestration', label: 'Orchestration', icon: 'M4 6h4v4H4V6zm0 8h4v4H4v-4zm12-8h4v4h-4V6zm0 8h4v4h-4v-4zM10 8h4M10 16h4M8 12h8' },
+  { to: '/use-cases', label: 'Use Cases', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
   { to: '/export', label: 'Export', icon: 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
 ];
 

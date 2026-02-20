@@ -20,6 +20,15 @@ const SCOPE_OPTIONS: { value: ExportScope; label: string; desc: string }[] = [
   { value: 'assigned', label: 'Assigned only', desc: 'API schemas only' },
 ];
 
+type TabKey = 'spec' | 'toolkit' | 'usecase' | 'prompt';
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'spec', label: 'OpenAPI Spec' },
+  { key: 'toolkit', label: 'Toolkit Config' },
+  { key: 'usecase', label: 'Use-Case Spec' },
+  { key: 'prompt', label: 'Prompt Spec' },
+];
+
 export default function ExportCenterPage() {
   const { data: connections, loading } = useApi<ConnectionExportMeta[]>('/api/export');
 
@@ -28,20 +37,23 @@ export default function ExportCenterPage() {
   const [format, setFormat] = useState<ExportFormat>('openapi3_json');
   const [scope, setScope] = useState<ExportScope>('all');
   const [gatewayUrl, setGatewayUrl] = useState(window.location.origin);
-  const [activeTab, setActiveTab] = useState<'spec' | 'toolkit'>('spec');
+  const [activeTab, setActiveTab] = useState<TabKey>('spec');
 
   // Preview
   const [specPreview, setSpecPreview] = useState<string | null>(null);
   const [specFilename, setSpecFilename] = useState('');
   const [toolkitConfig, setToolkitConfig] = useState<ToolkitConfig | null>(null);
+  const [usecasePreview, setUsecasePreview] = useState<string | null>(null);
+  const [usecaseFilename, setUsecaseFilename] = useState('');
+  const [promptPreview, setPromptPreview] = useState<string | null>(null);
+  const [promptFilename, setPromptFilename] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
   // Fetch spec preview when params change
   useEffect(() => {
-    if (!selectedConn) return;
-    if (activeTab !== 'spec') return;
+    if (!selectedConn || activeTab !== 'spec') return;
 
     let cancelled = false;
     setPreviewLoading(true);
@@ -67,8 +79,7 @@ export default function ExportCenterPage() {
 
   // Fetch toolkit config when tab switches
   useEffect(() => {
-    if (!selectedConn) return;
-    if (activeTab !== 'toolkit') return;
+    if (!selectedConn || activeTab !== 'toolkit') return;
 
     let cancelled = false;
     setPreviewLoading(true);
@@ -91,6 +102,58 @@ export default function ExportCenterPage() {
     return () => { cancelled = true; };
   }, [selectedConn, gatewayUrl, activeTab]);
 
+  // Fetch use-case spec preview
+  useEffect(() => {
+    if (!selectedConn || activeTab !== 'usecase') return;
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setError('');
+
+    const params = new URLSearchParams({ gatewayUrl });
+    api<ExportPreviewResponse>(`/api/export/connections/${selectedConn.id}/use-cases/preview?${params}`)
+      .then((result) => {
+        if (cancelled) return;
+        setUsecasePreview(result.content);
+        setUsecaseFilename(result.filename);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedConn, gatewayUrl, activeTab]);
+
+  // Fetch prompt spec preview
+  useEffect(() => {
+    if (!selectedConn || activeTab !== 'prompt') return;
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setError('');
+
+    const params = new URLSearchParams({ gatewayUrl });
+    api<ExportPreviewResponse>(`/api/export/connections/${selectedConn.id}/prompt-spec/preview?${params}`)
+      .then((result) => {
+        if (cancelled) return;
+        setPromptPreview(result.content);
+        setPromptFilename(result.filename);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedConn, gatewayUrl, activeTab]);
+
   function openExport(conn: ConnectionExportMeta) {
     setSelectedConn(conn);
     setFormat('openapi3_json');
@@ -98,6 +161,8 @@ export default function ExportCenterPage() {
     setActiveTab('spec');
     setSpecPreview(null);
     setToolkitConfig(null);
+    setUsecasePreview(null);
+    setPromptPreview(null);
     setError('');
     setCopied(false);
   }
@@ -106,13 +171,15 @@ export default function ExportCenterPage() {
     setSelectedConn(null);
     setSpecPreview(null);
     setToolkitConfig(null);
+    setUsecasePreview(null);
+    setPromptPreview(null);
     setError('');
   }
 
   function getPreviewContent(): string {
-    if (activeTab === 'toolkit' && toolkitConfig) {
-      return JSON.stringify(toolkitConfig, null, 2);
-    }
+    if (activeTab === 'toolkit' && toolkitConfig) return JSON.stringify(toolkitConfig, null, 2);
+    if (activeTab === 'usecase' && usecasePreview) return usecasePreview;
+    if (activeTab === 'prompt' && promptPreview) return promptPreview;
     return specPreview || '';
   }
 
@@ -121,7 +188,17 @@ export default function ExportCenterPage() {
       const safe = selectedConn.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       return `${safe}-toolkit-config.json`;
     }
+    if (activeTab === 'usecase') return usecaseFilename;
+    if (activeTab === 'prompt') return promptFilename;
     return specFilename;
+  }
+
+  function hasPreviewContent(): boolean {
+    if (activeTab === 'spec') return !!specPreview;
+    if (activeTab === 'toolkit') return !!toolkitConfig;
+    if (activeTab === 'usecase') return !!usecasePreview;
+    if (activeTab === 'prompt') return !!promptPreview;
+    return false;
   }
 
   async function handleCopy() {
@@ -152,10 +229,38 @@ export default function ExportCenterPage() {
 
   function handleDirectDownload() {
     if (!selectedConn) return;
-    const params = new URLSearchParams({ format, scope, gatewayUrl });
-    // Open in new tab to trigger browser download
-    window.open(`/api/export/connections/${selectedConn.id}?${params}`, '_blank');
+    if (activeTab === 'spec') {
+      const params = new URLSearchParams({ format, scope, gatewayUrl });
+      window.open(`/api/export/connections/${selectedConn.id}?${params}`, '_blank');
+    } else if (activeTab === 'usecase') {
+      const params = new URLSearchParams({ gatewayUrl });
+      window.open(`/api/export/connections/${selectedConn.id}/use-cases?${params}`, '_blank');
+    } else if (activeTab === 'prompt') {
+      const params = new URLSearchParams({ gatewayUrl });
+      window.open(`/api/export/connections/${selectedConn.id}/prompt-spec?${params}`, '_blank');
+    }
   }
+
+  function renderPreviewContent(): string {
+    if (activeTab === 'spec' && specPreview) {
+      try {
+        if (format.endsWith('_json') || format === 'swagger2_json') {
+          return JSON.stringify(JSON.parse(specPreview), null, 2);
+        }
+      } catch { /* fallthrough */ }
+      return specPreview;
+    }
+    if (activeTab === 'toolkit' && toolkitConfig) return JSON.stringify(toolkitConfig, null, 2);
+    if (activeTab === 'usecase' && usecasePreview) {
+      try { return JSON.stringify(JSON.parse(usecasePreview), null, 2); } catch { return usecasePreview; }
+    }
+    if (activeTab === 'prompt' && promptPreview) return promptPreview;
+    if (previewLoading) return '';
+    return 'No preview available';
+  }
+
+  // Show format/scope controls only for the OpenAPI spec tab
+  const showFormatControls = activeTab === 'spec';
 
   if (loading) {
     return (
@@ -171,7 +276,7 @@ export default function ExportCenterPage() {
       <div>
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Export Center</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Export OpenAPI specs and toolkit configurations for agent integration
+          Export OpenAPI specs, toolkit configurations, use-case specs, and prompt specifications for agent integration
         </p>
       </div>
 
@@ -217,12 +322,7 @@ export default function ExportCenterPage() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openExport(conn)}
-                      disabled={conn.assigned_api_count === 0}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                        conn.assigned_api_count > 0
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                          : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                      }`}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                     >
                       Export
                     </button>
@@ -266,38 +366,54 @@ export default function ExportCenterPage() {
 
             {/* Modal body */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {/* Controls row */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Format */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Format</label>
-                  <select
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value as ExportFormat)}
-                    className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
-                  >
-                    {FORMAT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
+              {/* Controls row — shown only for spec tab */}
+              {showFormatControls && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Format */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Format</label>
+                    <select
+                      value={format}
+                      onChange={(e) => setFormat(e.target.value as ExportFormat)}
+                      className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
+                    >
+                      {FORMAT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Scope */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Scope</label>
-                  <select
-                    value={scope}
-                    onChange={(e) => setScope(e.target.value as ExportScope)}
-                    className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
-                  >
-                    {SCOPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label} – {opt.desc}</option>
-                    ))}
-                  </select>
-                </div>
+                  {/* Scope */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Scope</label>
+                    <select
+                      value={scope}
+                      onChange={(e) => setScope(e.target.value as ExportScope)}
+                      className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
+                    >
+                      {SCOPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label} – {opt.desc}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Gateway URL */}
-                <div>
+                  {/* Gateway URL */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Gateway URL</label>
+                    <input
+                      type="text"
+                      value={gatewayUrl}
+                      onChange={(e) => setGatewayUrl(e.target.value)}
+                      placeholder="https://your-gateway.company.com"
+                      className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Gateway URL for non-spec tabs */}
+              {!showFormatControls && (
+                <div className="max-w-md">
                   <label className="block text-xs font-medium text-gray-400 mb-1">Gateway URL</label>
                   <input
                     type="text"
@@ -307,31 +423,32 @@ export default function ExportCenterPage() {
                     className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm"
                   />
                 </div>
-              </div>
+              )}
 
               {/* Tabs */}
               <div className="flex gap-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1">
-                <button
-                  onClick={() => { setActiveTab('spec'); setCopied(false); }}
-                  className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    activeTab === 'spec'
-                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
-                >
-                  OpenAPI Spec
-                </button>
-                <button
-                  onClick={() => { setActiveTab('toolkit'); setCopied(false); }}
-                  className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    activeTab === 'toolkit'
-                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
-                >
-                  Toolkit Config
-                </button>
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => { setActiveTab(tab.key); setCopied(false); }}
+                    className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      activeTab === tab.key
+                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
+
+              {/* Tab description */}
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {activeTab === 'spec' && 'OpenAPI specification for all registered APIs accessible through the gateway proxy.'}
+                {activeTab === 'toolkit' && 'Toolkit configuration JSON for agent framework integration.'}
+                {activeTab === 'usecase' && 'OpenAPI specification for use-case template endpoints (discovery + execution).'}
+                {activeTab === 'prompt' && 'Markdown specification for AI agent system prompts — describes available use cases, parameters, and example requests.'}
+              </p>
 
               {/* Error */}
               {error && (
@@ -348,15 +465,7 @@ export default function ExportCenterPage() {
                   </div>
                 )}
                 <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 overflow-auto max-h-[50vh] whitespace-pre-wrap">
-                  {activeTab === 'spec' && specPreview
-                    ? (format.endsWith('_json') || format === 'swagger2_json'
-                        ? JSON.stringify(JSON.parse(specPreview), null, 2)
-                        : specPreview)
-                    : activeTab === 'toolkit' && toolkitConfig
-                      ? JSON.stringify(toolkitConfig, null, 2)
-                      : previewLoading
-                        ? ''
-                        : 'No preview available'}
+                  {renderPreviewContent()}
                 </pre>
               </div>
             </div>
@@ -364,22 +473,20 @@ export default function ExportCenterPage() {
             {/* Modal footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 shrink-0">
               <div className="text-xs text-gray-400">
-                {specFilename && activeTab === 'spec' && (
-                  <span>{specFilename}</span>
-                )}
+                {getDownloadFilename() && <span>{getDownloadFilename()}</span>}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopy}
-                  disabled={previewLoading || (!specPreview && !toolkitConfig)}
+                  disabled={previewLoading || !hasPreviewContent()}
                   className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {copied ? 'Copied!' : 'Copy to Clipboard'}
                 </button>
-                {activeTab === 'spec' ? (
+                {(activeTab === 'spec' || activeTab === 'usecase' || activeTab === 'prompt') ? (
                   <button
                     onClick={handleDirectDownload}
-                    disabled={previewLoading || !specPreview}
+                    disabled={previewLoading || !hasPreviewContent()}
                     className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Download
@@ -387,7 +494,7 @@ export default function ExportCenterPage() {
                 ) : (
                   <button
                     onClick={handleDownload}
-                    disabled={previewLoading || !toolkitConfig}
+                    disabled={previewLoading || !hasPreviewContent()}
                     className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Download

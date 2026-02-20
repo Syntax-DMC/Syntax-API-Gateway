@@ -251,3 +251,55 @@ export interface ToolkitConfig {
   base_url: string;
   show_intermediate_steps: boolean;
 }
+
+// ── Use-Case Template types ──────────────────────────────
+export interface UseCaseContextParam {
+  name: string;
+  type: string;
+  description?: string;
+  example?: string;
+  required: boolean;
+}
+
+export interface UseCaseCallDef {
+  slug: string;
+  param_mapping: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: string;
+  description?: string;
+}
+
+export interface UseCaseTemplate {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  required_context: UseCaseContextParam[];
+  calls: UseCaseCallDef[];
+  mode: 'parallel' | 'sequential';
+  tags: string[];
+  is_active: boolean;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UseCaseExecutionResult {
+  template_slug: string;
+  template_name: string;
+  totalDurationMs: number;
+  mode: 'parallel' | 'sequential';
+  context: Record<string, string>;
+  results: OrchestratorCallResult[];
+}
+
+export interface UseCaseListItem {
+  slug: string;
+  name: string;
+  description: string | null;
+  required_context: UseCaseContextParam[];
+  tags: string[];
+  call_count: number;
+  mode: 'parallel' | 'sequential';
+}

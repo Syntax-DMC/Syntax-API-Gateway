@@ -276,3 +276,36 @@ export interface ExportPreviewResponse {
   filename: string;
   apiCount: number;
 }
+
+// ── Use-Case Template types ──────────────────────────────
+export interface UseCaseContextParam {
+  name: string;
+  type: string;
+  description?: string;
+  example?: string;
+  required: boolean;
+}
+
+export interface UseCaseCallDef {
+  slug: string;
+  param_mapping: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: string;
+  description?: string;
+}
+
+export interface UseCaseTemplate {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  required_context: UseCaseContextParam[];
+  calls: UseCaseCallDef[];
+  mode: 'parallel' | 'sequential';
+  tags: string[];
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}

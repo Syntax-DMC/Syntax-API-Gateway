@@ -14,6 +14,8 @@ import RegistryPage from './pages/RegistryPage';
 import RegistryDetailPage from './pages/RegistryDetailPage';
 import OrchestrationPage from './pages/OrchestrationPage';
 import ExportCenterPage from './pages/ExportCenterPage';
+import UseCasesPage from './pages/UseCasesPage';
+import UseCaseDetailPage from './pages/UseCaseDetailPage';
 
 export default function App() {
   const auth = useAuthProvider();
@@ -32,6 +34,8 @@ export default function App() {
             <Route path="/registry" element={<RegistryPage />} />
             <Route path="/registry/:id" element={<RegistryDetailPage />} />
             <Route path="/orchestration" element={<OrchestrationPage />} />
+            <Route path="/use-cases" element={<UseCasesPage />} />
+            <Route path="/use-cases/:id" element={<UseCaseDetailPage />} />
             <Route path="/export" element={<RequireAdmin><ExportCenterPage /></RequireAdmin>} />
             <Route path="/tenants" element={<RequireSuperadmin><TenantsPage /></RequireSuperadmin>} />
             <Route path="/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
