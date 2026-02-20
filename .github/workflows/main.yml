@@ -1,0 +1,46 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t syntax-dm-gateway:latest .
+
+      - name: Save Docker image
+        run: docker save syntax-dm-gateway:latest | gzip > syntax-dm-gateway.tar.gz
+
+      - name: Copy image to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: syntax-dm-gateway.tar.gz
+          target: /home/${{ secrets.EC2_USER }}
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~
+            echo "Loading Docker image..."
+            docker load < syntax-dm-gateway.tar.gz
+            echo "Restarting containers..."
+            docker compose down
+            docker compose up -d
+            rm -f syntax-dm-gateway.tar.gz
+            echo "Waiting for health check..."
+            sleep 5
+            docker compose ps
