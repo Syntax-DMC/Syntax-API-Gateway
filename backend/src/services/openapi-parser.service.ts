@@ -134,6 +134,26 @@ export function flattenResponseSchema(schema: Record<string, unknown> | undefine
 }
 
 /**
+ * Extract the base path from an OpenAPI 3.x server URL.
+ * e.g. "https://api.{regionHost}/sfc/v2" → "/sfc/v2"
+ */
+function extractServerBasePath(doc: OpenAPIV3.Document): string {
+  if (!doc.servers || doc.servers.length === 0) return '';
+  const serverUrl = doc.servers[0].url;
+  // Replace template variables so URL parsing works
+  const cleaned = serverUrl.replace(/\{[^}]+\}/g, 'placeholder');
+  try {
+    const url = new URL(cleaned);
+    return url.pathname.replace(/\/+$/, '') || '';
+  } catch {
+    // Relative URL fallback: extract path after host
+    const match = serverUrl.match(/^https?:\/\/[^/]+(\/.*)/);
+    if (match) return match[1].replace(/\/+$/, '');
+    return '';
+  }
+}
+
+/**
  * Safely strip circular references from an object so JSON.stringify won't throw.
  */
 function stripCircular(obj: unknown): unknown {
@@ -184,19 +204,26 @@ class OpenApiParserService {
     const endpoints: ParsedEndpoint[] = [];
     const paths = (parsed as OpenAPIV3.Document).paths || {};
 
+    // Extract base path from server URL (OpenAPI 3.x) or basePath (Swagger 2.0)
+    const basePath = isV3
+      ? extractServerBasePath(parsed as OpenAPIV3.Document)
+      : (((parsed as Record<string, unknown>).basePath as string) || '').replace(/\/+$/, '');
+
     for (const [pathStr, pathItem] of Object.entries(paths)) {
       if (!pathItem) continue;
       const methods = ['get', 'post', 'put', 'patch', 'delete'] as const;
+      const fullPath = basePath + pathStr;
 
       for (const method of methods) {
         const operation = (pathItem as Record<string, unknown>)[method] as OpenAPIV3.OperationObject | undefined;
         if (!operation) continue;
 
         try {
-          const endpoint = this.parseOperation(title, method, pathStr, operation, pathItem as OpenAPIV3.PathItemObject);
+          // Use pathStr (without base) for slug generation, fullPath for stored path
+          const endpoint = this.parseOperation(title, method, pathStr, fullPath, operation, pathItem as OpenAPIV3.PathItemObject);
           endpoints.push(endpoint);
         } catch (err) {
-          errors.push(`${method.toUpperCase()} ${pathStr}: ${(err as Error).message}`);
+          errors.push(`${method.toUpperCase()} ${fullPath}: ${(err as Error).message}`);
         }
       }
     }
@@ -207,12 +234,13 @@ class OpenApiParserService {
   private parseOperation(
     apiTitle: string,
     method: string,
-    path: string,
+    slugPath: string,
+    storedPath: string,
     operation: OpenAPIV3.OperationObject,
     pathItem: OpenAPIV3.PathItemObject
   ): ParsedEndpoint {
-    const slug = generateSlug(apiTitle, method, path, operation.operationId);
-    const name = operation.summary || operation.operationId || `${method.toUpperCase()} ${path}`;
+    const slug = generateSlug(apiTitle, method, slugPath, operation.operationId);
+    const name = operation.summary || operation.operationId || `${method.toUpperCase()} ${storedPath}`;
     const description = operation.description;
     const tags = operation.tags || [];
 
@@ -292,7 +320,7 @@ class OpenApiParserService {
       name,
       description,
       method: method.toUpperCase(),
-      path,
+      path: storedPath,
       query_params,
       request_headers,
       request_body: request_body ? stripCircular(request_body) as ParsedEndpoint['request_body'] : undefined,

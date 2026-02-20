@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-02-20
+
+### Fixed
+
+- **OpenAPI import: prepend server base path** — Paths from OpenAPI specs now include the base path from the server URL (e.g., `/sfc/v2/sfcdetail` instead of just `/sfcdetail`). Fixes 404 errors when calling SAP DM APIs through the orchestrator. Existing specs must be re-imported.
+
 ## [1.14.1] - 2026-02-20
 
 ### Changed
