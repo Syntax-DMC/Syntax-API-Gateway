@@ -78,6 +78,7 @@ class RegistryService {
       request_headers?: unknown[];
       request_body?: unknown;
       response_schema?: unknown;
+      response_fields?: unknown[];
       provides?: string[];
       depends_on?: unknown[];
       tags?: string[];
@@ -90,8 +91,8 @@ class RegistryService {
       `INSERT INTO api_definitions
         (tenant_id, slug, name, description, version, spec_format, method, path,
          query_params, request_headers, request_body, response_schema,
-         provides, depends_on, tags, is_active, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         response_fields, provides, depends_on, tags, is_active, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING *`,
       [
         tenantId,
@@ -106,6 +107,7 @@ class RegistryService {
         JSON.stringify(data.request_headers || []),
         data.request_body ? JSON.stringify(data.request_body) : null,
         data.response_schema ? JSON.stringify(data.response_schema) : null,
+        JSON.stringify(data.response_fields || []),
         data.provides || [],
         JSON.stringify(data.depends_on || []),
         data.tags || [],
@@ -141,7 +143,7 @@ class RegistryService {
       }
     }
 
-    const jsonbFields = ['query_params', 'request_headers', 'request_body', 'response_schema', 'depends_on'];
+    const jsonbFields = ['query_params', 'request_headers', 'request_body', 'response_schema', 'response_fields', 'depends_on'];
     for (const f of jsonbFields) {
       if (data[f] !== undefined) {
         fields.push(`${f} = $${idx++}`);
@@ -206,6 +208,7 @@ class RegistryService {
       request_headers?: unknown[];
       request_body?: unknown;
       response_schema?: unknown;
+      response_fields?: unknown[];
       provides?: string[];
       depends_on?: unknown[];
       tags?: string[];
@@ -226,8 +229,8 @@ class RegistryService {
             `INSERT INTO api_definitions
               (tenant_id, slug, name, description, version, spec_format, method, path,
                query_params, request_headers, request_body, response_schema,
-               provides, depends_on, tags, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+               response_fields, provides, depends_on, tags, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
              ON CONFLICT (tenant_id, slug) DO NOTHING
              RETURNING id`,
             [
@@ -243,6 +246,7 @@ class RegistryService {
               JSON.stringify(def.request_headers || []),
               def.request_body ? JSON.stringify(def.request_body) : null,
               def.response_schema ? JSON.stringify(def.response_schema) : null,
+              JSON.stringify(def.response_fields || []),
               def.provides || [],
               JSON.stringify(def.depends_on || []),
               def.tags || [],

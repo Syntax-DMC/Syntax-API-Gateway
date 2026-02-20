@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
-import type { SapConnection, ApiDefinition, ParamDefinition } from '../types';
+import type { SapConnection, ApiDefinition, ParamDefinition, AutoResolvePreview } from '../types';
 
 /* ────────────────────────────────────────────────────────── */
 /*  Types                                                    */
@@ -22,7 +22,7 @@ const emptyForm: FormData = {
   clientSecret: '', agentApiUrl: '', agentApiKey: '',
 };
 
-type WizardStep = 1 | 2 | 3 | 4 | 5;
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
 
 interface StepTestState {
@@ -38,14 +38,19 @@ interface ExtractedParam {
   description?: string;
   example?: string;
   usedBy: string[];
+  /** 'context' = user must provide, 'injected' = auto-resolved from another API */
+  source?: 'context' | 'injected';
+  sourceSlug?: string;
+  sourcePath?: string;
 }
 
 const STEPS: { num: WizardStep; label: string }[] = [
   { num: 1, label: 'Connection' },
   { num: 2, label: 'API Key' },
   { num: 3, label: 'APIs' },
-  { num: 4, label: 'Parameters' },
-  { num: 5, label: 'Output' },
+  { num: 4, label: 'Flow' },
+  { num: 5, label: 'Parameters' },
+  { num: 6, label: 'Output' },
 ];
 
 /* ────────────────────────────────────────────────────────── */
@@ -207,11 +212,17 @@ export default function ConnectionsPage() {
   const [apisLoading, setApisLoading] = useState(false);
   const [selectedApiIds, setSelectedApiIds] = useState<Set<string>>(new Set());
   const [apiSearch, setApiSearch] = useState('');
+  const [methodFilter, setMethodFilter] = useState('');
 
-  // Step 4: Parameter defaults
+  // Step 4: Flow Designer
+  const [flowPreview, setFlowPreview] = useState<AutoResolvePreview | null>(null);
+  const [flowLoading, setFlowLoading] = useState(false);
+  const flowSvgRef = useRef<SVGSVGElement>(null);
+
+  // Step 5: Parameter defaults
   const [paramDefaults, setParamDefaults] = useState<Record<string, string>>({});
 
-  // Step 5: Output
+  // Step 6: Output
   const [gatewayUrl, setGatewayUrl] = useState(window.location.origin);
   const [outputTab, setOutputTab] = useState<'json' | 'prompt'>('json');
   const [outputCopied, setOutputCopied] = useState(false);
@@ -284,13 +295,16 @@ export default function ConnectionsPage() {
     setAvailableApis([]);
     setSelectedApiIds(new Set());
     setApiSearch('');
+    setMethodFilter('');
+    setFlowPreview(null);
+    setFlowLoading(false);
     setParamDefaults({});
     setOutputTab('json');
     setOutputCopied(false);
   }
 
   function closeWizard() {
-    if (createdConnectionId && wizardStep < 5) {
+    if (createdConnectionId && wizardStep < 6) {
       if (!confirm('The connection was already created. Close the wizard anyway?')) return;
     }
     setShowWizard(false);
@@ -406,13 +420,17 @@ export default function ConnectionsPage() {
   }
 
   function filteredApis(): ApiDefinition[] {
-    if (!apiSearch.trim()) return availableApis;
-    const q = apiSearch.toLowerCase();
-    return availableApis.filter(a =>
-      a.slug.toLowerCase().includes(q) ||
-      a.name.toLowerCase().includes(q) ||
-      a.path.toLowerCase().includes(q)
-    );
+    let list = availableApis;
+    if (methodFilter) list = list.filter(a => a.method === methodFilter);
+    if (apiSearch.trim()) {
+      const q = apiSearch.toLowerCase();
+      list = list.filter(a =>
+        a.slug.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q) ||
+        a.path.toLowerCase().includes(q)
+      );
+    }
+    return list;
   }
 
   async function handleStep3Advance() {
@@ -423,14 +441,9 @@ export default function ConnectionsPage() {
       await api(`/api/connections/${createdConnectionId}/assign-apis`, 'POST', {
         apiDefinitionIds: Array.from(selectedApiIds),
       });
-      // Pre-fill parameter defaults from examples
-      const params = extractUniqueParams(selectedApiIds, availableApis);
-      const defaults: Record<string, string> = {};
-      for (const p of params) {
-        if (p.example) defaults[p.name] = p.example;
-      }
-      setParamDefaults(defaults);
+      // Move to Flow Designer step and load preview
       setWizardStep(4);
+      loadFlowPreview();
     } catch (err) {
       setWizardError((err as Error).message);
     } finally {
@@ -438,7 +451,53 @@ export default function ConnectionsPage() {
     }
   }
 
-  // Step 5: Output helpers
+  // Step 4: Load auto-resolve preview
+  const loadFlowPreview = useCallback(async () => {
+    const slugs = availableApis.filter(a => selectedApiIds.has(a.id)).map(a => a.slug);
+    if (slugs.length === 0) return;
+    setFlowLoading(true);
+    try {
+      const result = await api<AutoResolvePreview>('/api/orchestrator/auto-resolve-preview', 'POST', {
+        slugs,
+        context: {},
+      });
+      setFlowPreview(result);
+    } catch (err) {
+      setWizardError((err as Error).message);
+    } finally {
+      setFlowLoading(false);
+    }
+  }, [availableApis, selectedApiIds]);
+
+  // Step 4 → 5: Derive parameters from flow preview
+  function handleFlowAdvance() {
+    const params = extractUniqueParams(selectedApiIds, availableApis);
+    // Enrich with flow info
+    if (flowPreview) {
+      for (const p of params) {
+        // Check if any API that uses this param gets it injected
+        const injectedBy = Object.entries(flowPreview.apiDetails).find(
+          ([, detail]) => detail.injectedParams[p.name]
+        );
+        if (injectedBy) {
+          p.source = 'injected';
+          p.sourceSlug = injectedBy[1].injectedParams[p.name].source_slug;
+          p.sourcePath = injectedBy[1].injectedParams[p.name].source_path;
+        } else {
+          p.source = 'context';
+        }
+      }
+    }
+    // Pre-fill parameter defaults from examples (only for context params)
+    const defaults: Record<string, string> = {};
+    for (const p of params) {
+      if (p.example && p.source !== 'injected') defaults[p.name] = p.example;
+    }
+    setParamDefaults(defaults);
+    setWizardStep(5);
+  }
+
+  // Step 6: Output helpers
   function getSelectedApiObjects(): ApiDefinition[] {
     return availableApis.filter(a => selectedApiIds.has(a.id));
   }
@@ -563,7 +622,22 @@ export default function ConnectionsPage() {
   }
 
   // ── Extracted params for step 4 ──
-  const extractedParams = wizardStep >= 4 ? extractUniqueParams(selectedApiIds, availableApis) : [];
+  const extractedParams = wizardStep >= 5 ? extractUniqueParams(selectedApiIds, availableApis) : [];
+  // Enrich params with flow data
+  if (extractedParams.length > 0 && flowPreview) {
+    for (const p of extractedParams) {
+      const injectedBy = Object.entries(flowPreview.apiDetails).find(
+        ([, detail]) => detail.injectedParams[p.name]
+      );
+      if (injectedBy) {
+        p.source = 'injected';
+        p.sourceSlug = injectedBy[1].injectedParams[p.name].source_slug;
+        p.sourcePath = injectedBy[1].injectedParams[p.name].source_path;
+      } else {
+        p.source = 'context';
+      }
+    }
+  }
 
   const isWideStep = wizardStep >= 3;
 
@@ -579,7 +653,7 @@ export default function ConnectionsPage() {
       {/* ── Wizard Modal ─────────────────────────────── */}
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-h-[90vh] overflow-y-auto p-6 transition-all ${isWideStep ? 'max-w-3xl' : 'max-w-lg'}`}>
+          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-h-[90vh] overflow-y-auto p-6 transition-all ${wizardStep === 4 ? 'max-w-5xl' : isWideStep ? 'max-w-3xl' : 'max-w-lg'}`}>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">New Connection</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Guided setup — connection, token, API selection, and agent output</p>
 
@@ -684,6 +758,18 @@ export default function ConnectionsPage() {
                     placeholder="Search APIs..."
                     className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400"
                   />
+                  <select
+                    value={methodFilter}
+                    onChange={(e) => setMethodFilter(e.target.value)}
+                    className="shrink-0 px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-xs"
+                  >
+                    <option value="">All Methods</option>
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
                   <button
                     onClick={toggleAllApis}
                     className="shrink-0 px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg transition-colors"
@@ -740,45 +826,257 @@ export default function ConnectionsPage() {
               </div>
             )}
 
-            {/* ── Step 4: Parameters ── */}
+            {/* ── Step 4: Flow Designer ── */}
             {wizardStep === 4 && (
               <div className="space-y-4">
-                {extractedParams.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">
-                    No query parameters found in the selected APIs.
+                {flowLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2" />
+                    <span className="text-sm text-gray-400">Resolving dependencies...</span>
                   </div>
-                ) : (
+                ) : flowPreview ? (
                   <>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Set default values for the {extractedParams.length} parameters used across your {selectedApiIds.size} selected APIs. These will appear in the generated output.
+                      Auto-resolved execution flow — {flowPreview.layers.length} layer{flowPreview.layers.length !== 1 ? 's' : ''}, {Object.keys(flowPreview.apiDetails).length} APIs
                     </p>
-                    <div className="max-h-[50vh] overflow-y-auto space-y-3">
-                      {extractedParams.map(p => (
-                        <div key={p.name} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <code className="text-sm font-mono font-medium text-gray-900 dark:text-white">{p.name}</code>
-                            <span className="text-[10px] text-gray-400">({p.type})</span>
-                            {p.required && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">required</span>}
-                            <span className="ml-auto text-[10px] text-gray-400">{p.usedBy.length} API{p.usedBy.length !== 1 ? 's' : ''}</span>
+
+                    {/* Warnings */}
+                    {flowPreview.warnings.length > 0 && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
+                        {flowPreview.warnings.map((w, i) => (
+                          <p key={i} className="text-xs text-yellow-500">{w}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Unresolved params */}
+                    {flowPreview.unresolvedParams.length > 0 && (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                        <p className="text-xs text-red-400 font-medium mb-1">Unresolved parameters (must be provided as context):</p>
+                        {flowPreview.unresolvedParams.map((u, i) => (
+                          <p key={i} className="text-xs text-red-400">{u.slug} → {u.param}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Flow grid: columns = layers */}
+                    <div className="relative overflow-x-auto">
+                      <div className="flex gap-6 min-w-max py-4 px-2" style={{ position: 'relative' }}>
+                        {flowPreview.layers.map(layer => (
+                          <div key={layer.layer} className="flex flex-col gap-3 min-w-[220px]">
+                            <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center mb-1">
+                              Layer {layer.layer + 1}
+                            </div>
+                            {layer.slugs.map(slug => {
+                              const detail = flowPreview.apiDetails[slug];
+                              if (!detail) return null;
+                              return (
+                                <div
+                                  key={slug}
+                                  className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-3"
+                                  data-slug={slug}
+                                >
+                                  {/* Header */}
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${METHOD_COLORS[detail.method] || 'bg-gray-500/15 text-gray-400'}`}>
+                                      {detail.method}
+                                    </span>
+                                    <span className="font-mono text-xs text-gray-900 dark:text-white font-medium truncate">{slug}</span>
+                                  </div>
+                                  <p className="text-[10px] text-gray-400 truncate mb-2">{detail.name}</p>
+
+                                  {/* Inputs */}
+                                  {detail.query_params.length > 0 && (
+                                    <div className="mb-2">
+                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium mb-1">Inputs</p>
+                                      {detail.query_params.map(qp => {
+                                        const isContext = detail.contextParams.includes(qp.name);
+                                        const isInjected = !!detail.injectedParams[qp.name];
+                                        const isUnresolved = detail.unresolvedParams.includes(qp.name);
+                                        return (
+                                          <div key={qp.name} className="flex items-center gap-1.5 py-0.5">
+                                            <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                              isContext ? 'bg-green-400' :
+                                              isInjected ? 'bg-blue-400' :
+                                              isUnresolved ? 'bg-red-400' :
+                                              'bg-gray-300 dark:bg-gray-600'
+                                            }`} />
+                                            <span className="text-[10px] font-mono text-gray-600 dark:text-gray-300">{qp.name}</span>
+                                            {isInjected && (
+                                              <span className="text-[9px] text-blue-400 ml-auto truncate max-w-[100px]">
+                                                ← {detail.injectedParams[qp.name].source_slug}
+                                              </span>
+                                            )}
+                                            {isContext && (
+                                              <span className="text-[9px] text-green-400 ml-auto">context</span>
+                                            )}
+                                            {isUnresolved && (
+                                              <span className="text-[9px] text-red-400 ml-auto">required</span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* Outputs */}
+                                  {detail.response_fields.length > 0 && (
+                                    <div>
+                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium mb-1">Outputs</p>
+                                      {detail.response_fields.slice(0, 8).map(rf => (
+                                        <div key={rf.path} className="flex items-center gap-1.5 py-0.5">
+                                          <span className="w-2 h-2 rounded-sm bg-purple-400/50 shrink-0" />
+                                          <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate">{rf.leaf_name}</span>
+                                          <span className="text-[9px] text-gray-400 ml-auto">{rf.type}</span>
+                                        </div>
+                                      ))}
+                                      {detail.response_fields.length > 8 && (
+                                        <p className="text-[9px] text-gray-400 pl-3.5">+{detail.response_fields.length - 8} more</p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                          {p.description && <p className="text-xs text-gray-400 mb-1.5">{p.description}</p>}
-                          <input
-                            type="text"
-                            value={paramDefaults[p.name] || ''}
-                            onChange={(e) => setParamDefaults(prev => ({ ...prev, [p.name]: e.target.value }))}
-                            placeholder={p.example || `Enter ${p.name}...`}
-                            className="w-full px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400"
-                          />
-                        </div>
-                      ))}
+                        ))}
+
+                        {/* SVG overlay for dependency lines */}
+                        <svg
+                          ref={flowSvgRef}
+                          className="absolute inset-0 pointer-events-none"
+                          style={{ width: '100%', height: '100%', overflow: 'visible' }}
+                        >
+                          {flowPreview.dependencyEdges.map((edge, i) => {
+                            // We draw a simple curved arrow between layers
+                            const fromLayer = flowPreview.layers.findIndex(l => l.slugs.includes(edge.from));
+                            const toLayer = flowPreview.layers.findIndex(l => l.slugs.includes(edge.to));
+                            if (fromLayer === -1 || toLayer === -1) return null;
+
+                            // Approximate positions based on layer indices
+                            const fromX = fromLayer * 244 + 220;
+                            const toX = toLayer * 244 + 2;
+                            const fromSlugIndex = flowPreview.layers[fromLayer].slugs.indexOf(edge.from);
+                            const toSlugIndex = flowPreview.layers[toLayer].slugs.indexOf(edge.to);
+                            const fromY = 40 + fromSlugIndex * 180 + 80;
+                            const toY = 40 + toSlugIndex * 180 + 80;
+                            const midX = (fromX + toX) / 2;
+
+                            return (
+                              <path
+                                key={i}
+                                d={`M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`}
+                                fill="none"
+                                stroke="rgba(96, 165, 250, 0.4)"
+                                strokeWidth="2"
+                                strokeDasharray="4 2"
+                              />
+                            );
+                          })}
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400">
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" /> Context param</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400" /> Auto-injected</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" /> Unresolved</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-purple-400/50" /> Output field</span>
                     </div>
                   </>
+                ) : (
+                  <div className="text-center py-8 text-gray-400 text-sm">
+                    No flow preview available.
+                  </div>
                 )}
+
+                {wizardError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{wizardError}</div>}
 
                 <div className="flex justify-between pt-2">
                   <button onClick={() => setWizardStep(3)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
                   <button
-                    onClick={() => setWizardStep(5)}
+                    onClick={handleFlowAdvance}
+                    disabled={flowLoading}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Continue to Parameters
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 5: Parameters ── */}
+            {wizardStep === 5 && (
+              <div className="space-y-4">
+                {(() => {
+                  const contextParams = extractedParams.filter(p => p.source !== 'injected');
+                  const injectedParams = extractedParams.filter(p => p.source === 'injected');
+                  return (
+                    <>
+                      {contextParams.length === 0 && injectedParams.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                          No query parameters found in the selected APIs.
+                        </div>
+                      ) : (
+                        <>
+                          {contextParams.length > 0 && (
+                            <>
+                              <p className="text-xs text-gray-400 dark:text-gray-500">
+                                Set default values for the {contextParams.length} context parameter{contextParams.length !== 1 ? 's' : ''} that the agent must provide.
+                              </p>
+                              <div className="max-h-[35vh] overflow-y-auto space-y-3">
+                                {contextParams.map(p => (
+                                  <div key={p.name} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                                      <code className="text-sm font-mono font-medium text-gray-900 dark:text-white">{p.name}</code>
+                                      <span className="text-[10px] text-gray-400">({p.type})</span>
+                                      {p.required && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">required</span>}
+                                      <span className="ml-auto text-[10px] text-gray-400">{p.usedBy.length} API{p.usedBy.length !== 1 ? 's' : ''}</span>
+                                    </div>
+                                    {p.description && <p className="text-xs text-gray-400 mb-1.5">{p.description}</p>}
+                                    <input
+                                      type="text"
+                                      value={paramDefaults[p.name] || ''}
+                                      onChange={(e) => setParamDefaults(prev => ({ ...prev, [p.name]: e.target.value }))}
+                                      placeholder={p.example || `Enter ${p.name}...`}
+                                      className="w-full px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+
+                          {injectedParams.length > 0 && (
+                            <div className="mt-4">
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                                Auto-injected parameters ({injectedParams.length}) — resolved automatically from other API responses:
+                              </p>
+                              <div className="max-h-[20vh] overflow-y-auto space-y-1.5">
+                                {injectedParams.map(p => (
+                                  <div key={p.name} className="flex items-center gap-2 px-3 py-2 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+                                    <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                                    <code className="text-xs font-mono text-gray-900 dark:text-white">{p.name}</code>
+                                    <span className="text-[10px] text-blue-400 ml-auto">
+                                      ← {p.sourceSlug}.{p.sourcePath}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+
+                <div className="flex justify-between pt-2">
+                  <button onClick={() => setWizardStep(4)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button
+                    onClick={() => setWizardStep(6)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     Generate Output
@@ -787,8 +1085,8 @@ export default function ConnectionsPage() {
               </div>
             )}
 
-            {/* ── Step 5: Output ── */}
-            {wizardStep === 5 && (
+            {/* ── Step 6: Output ── */}
+            {wizardStep === 6 && (
               <div className="space-y-4">
                 {/* Gateway URL */}
                 <div>
@@ -832,7 +1130,7 @@ export default function ConnectionsPage() {
 
                 {/* Actions */}
                 <div className="flex items-center justify-between">
-                  <button onClick={() => setWizardStep(4)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => setWizardStep(5)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={copyOutput}

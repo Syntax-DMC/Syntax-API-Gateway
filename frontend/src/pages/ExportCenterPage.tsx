@@ -20,13 +20,11 @@ const SCOPE_OPTIONS: { value: ExportScope; label: string; desc: string }[] = [
   { value: 'assigned', label: 'Assigned only', desc: 'API schemas only' },
 ];
 
-type TabKey = 'spec' | 'toolkit' | 'usecase' | 'prompt';
+type TabKey = 'spec' | 'toolkit';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'spec', label: 'OpenAPI Spec' },
   { key: 'toolkit', label: 'Toolkit Config' },
-  { key: 'usecase', label: 'Use-Case Spec' },
-  { key: 'prompt', label: 'Prompt Spec' },
 ];
 
 export default function ExportCenterPage() {
@@ -43,10 +41,6 @@ export default function ExportCenterPage() {
   const [specPreview, setSpecPreview] = useState<string | null>(null);
   const [specFilename, setSpecFilename] = useState('');
   const [toolkitConfig, setToolkitConfig] = useState<ToolkitConfig | null>(null);
-  const [usecasePreview, setUsecasePreview] = useState<string | null>(null);
-  const [usecaseFilename, setUsecaseFilename] = useState('');
-  const [promptPreview, setPromptPreview] = useState<string | null>(null);
-  const [promptFilename, setPromptFilename] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -102,58 +96,6 @@ export default function ExportCenterPage() {
     return () => { cancelled = true; };
   }, [selectedConn, gatewayUrl, activeTab]);
 
-  // Fetch use-case spec preview
-  useEffect(() => {
-    if (!selectedConn || activeTab !== 'usecase') return;
-
-    let cancelled = false;
-    setPreviewLoading(true);
-    setError('');
-
-    const params = new URLSearchParams({ gatewayUrl });
-    api<ExportPreviewResponse>(`/api/export/connections/${selectedConn.id}/use-cases/preview?${params}`)
-      .then((result) => {
-        if (cancelled) return;
-        setUsecasePreview(result.content);
-        setUsecaseFilename(result.filename);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError((err as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [selectedConn, gatewayUrl, activeTab]);
-
-  // Fetch prompt spec preview
-  useEffect(() => {
-    if (!selectedConn || activeTab !== 'prompt') return;
-
-    let cancelled = false;
-    setPreviewLoading(true);
-    setError('');
-
-    const params = new URLSearchParams({ gatewayUrl });
-    api<ExportPreviewResponse>(`/api/export/connections/${selectedConn.id}/prompt-spec/preview?${params}`)
-      .then((result) => {
-        if (cancelled) return;
-        setPromptPreview(result.content);
-        setPromptFilename(result.filename);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError((err as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [selectedConn, gatewayUrl, activeTab]);
-
   function openExport(conn: ConnectionExportMeta) {
     setSelectedConn(conn);
     setFormat('openapi3_json');
@@ -161,8 +103,6 @@ export default function ExportCenterPage() {
     setActiveTab('spec');
     setSpecPreview(null);
     setToolkitConfig(null);
-    setUsecasePreview(null);
-    setPromptPreview(null);
     setError('');
     setCopied(false);
   }
@@ -171,15 +111,11 @@ export default function ExportCenterPage() {
     setSelectedConn(null);
     setSpecPreview(null);
     setToolkitConfig(null);
-    setUsecasePreview(null);
-    setPromptPreview(null);
     setError('');
   }
 
   function getPreviewContent(): string {
     if (activeTab === 'toolkit' && toolkitConfig) return JSON.stringify(toolkitConfig, null, 2);
-    if (activeTab === 'usecase' && usecasePreview) return usecasePreview;
-    if (activeTab === 'prompt' && promptPreview) return promptPreview;
     return specPreview || '';
   }
 
@@ -188,16 +124,12 @@ export default function ExportCenterPage() {
       const safe = selectedConn.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       return `${safe}-toolkit-config.json`;
     }
-    if (activeTab === 'usecase') return usecaseFilename;
-    if (activeTab === 'prompt') return promptFilename;
     return specFilename;
   }
 
   function hasPreviewContent(): boolean {
     if (activeTab === 'spec') return !!specPreview;
     if (activeTab === 'toolkit') return !!toolkitConfig;
-    if (activeTab === 'usecase') return !!usecasePreview;
-    if (activeTab === 'prompt') return !!promptPreview;
     return false;
   }
 
@@ -232,12 +164,6 @@ export default function ExportCenterPage() {
     if (activeTab === 'spec') {
       const params = new URLSearchParams({ format, scope, gatewayUrl });
       window.open(`/api/export/connections/${selectedConn.id}?${params}`, '_blank');
-    } else if (activeTab === 'usecase') {
-      const params = new URLSearchParams({ gatewayUrl });
-      window.open(`/api/export/connections/${selectedConn.id}/use-cases?${params}`, '_blank');
-    } else if (activeTab === 'prompt') {
-      const params = new URLSearchParams({ gatewayUrl });
-      window.open(`/api/export/connections/${selectedConn.id}/prompt-spec?${params}`, '_blank');
     }
   }
 
@@ -251,10 +177,6 @@ export default function ExportCenterPage() {
       return specPreview;
     }
     if (activeTab === 'toolkit' && toolkitConfig) return JSON.stringify(toolkitConfig, null, 2);
-    if (activeTab === 'usecase' && usecasePreview) {
-      try { return JSON.stringify(JSON.parse(usecasePreview), null, 2); } catch { return usecasePreview; }
-    }
-    if (activeTab === 'prompt' && promptPreview) return promptPreview;
     if (previewLoading) return '';
     return 'No preview available';
   }
@@ -276,7 +198,7 @@ export default function ExportCenterPage() {
       <div>
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Export Center</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Export OpenAPI specs, toolkit configurations, use-case specs, and prompt specifications for agent integration
+          Export OpenAPI specs and toolkit configurations for agent integration
         </p>
       </div>
 
@@ -446,8 +368,6 @@ export default function ExportCenterPage() {
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 {activeTab === 'spec' && 'OpenAPI specification for all registered APIs accessible through the gateway proxy.'}
                 {activeTab === 'toolkit' && 'Toolkit configuration JSON for agent framework integration.'}
-                {activeTab === 'usecase' && 'OpenAPI specification for use-case template endpoints (discovery + execution).'}
-                {activeTab === 'prompt' && 'Markdown specification for AI agent system prompts — describes available use cases, parameters, and example requests.'}
               </p>
 
               {/* Error */}
@@ -483,23 +403,13 @@ export default function ExportCenterPage() {
                 >
                   {copied ? 'Copied!' : 'Copy to Clipboard'}
                 </button>
-                {(activeTab === 'spec' || activeTab === 'usecase' || activeTab === 'prompt') ? (
-                  <button
-                    onClick={handleDirectDownload}
-                    disabled={previewLoading || !hasPreviewContent()}
-                    className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Download
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleDownload}
-                    disabled={previewLoading || !hasPreviewContent()}
-                    className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Download
-                  </button>
-                )}
+                <button
+                  onClick={activeTab === 'spec' ? handleDirectDownload : handleDownload}
+                  disabled={previewLoading || !hasPreviewContent()}
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Download
+                </button>
               </div>
             </div>
           </div>

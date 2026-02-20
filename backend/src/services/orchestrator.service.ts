@@ -1,7 +1,9 @@
 import { registryService } from './registry.service';
 import { explorerService } from './explorer.service';
+import { autoResolverService } from './auto-resolver.service';
 import {
   ApiDefinition,
+  DependencyDef,
   OrchestratorApiCall,
   OrchestratorCallResult,
   OrchestratorResult,
@@ -74,6 +76,24 @@ class OrchestratorService {
       return this.executeSequential(connectionId, tenantId, userId, calls);
     }
     return this.executeParallel(connectionId, tenantId, userId, calls);
+  }
+
+  /**
+   * Auto-resolved execution: takes slugs + context, builds dependency graph automatically,
+   * then executes sequentially with injected parameters.
+   */
+  async executeAutoResolved(
+    connectionId: string,
+    tenantId: string,
+    userId: string,
+    slugs: string[],
+    context: Record<string, string>,
+    overrides?: Record<string, Record<string, { source_slug: string; source_path: string }>>
+  ): Promise<OrchestratorResult> {
+    const resolved = await autoResolverService.resolve(slugs, context, tenantId, overrides);
+    const dynamicDeps = autoResolverService.buildDynamicDeps(resolved);
+
+    return this.executeSequential(connectionId, tenantId, userId, resolved.calls, dynamicDeps);
   }
 
   async validateQuery(
@@ -233,7 +253,8 @@ class OrchestratorService {
     connectionId: string,
     tenantId: string,
     userId: string,
-    calls: OrchestratorApiCall[]
+    calls: OrchestratorApiCall[],
+    dynamicDeps?: Map<string, DependencyDef[]>
   ): Promise<OrchestratorResult> {
     const overallStart = Date.now();
 
@@ -245,6 +266,17 @@ class OrchestratorService {
       const def = await registryService.getBySlug(call.slug, tenantId);
       if (def) {
         defsMap.set(call.slug, def);
+      }
+    }
+
+    // When dynamicDeps are provided, temporarily inject them into the defs for topological sort
+    if (dynamicDeps) {
+      for (const [slug, deps] of dynamicDeps) {
+        const def = defsMap.get(slug);
+        if (def) {
+          // Merge dynamic deps with any existing static deps
+          defsMap.set(slug, { ...def, depends_on: [...def.depends_on, ...deps] });
+        }
       }
     }
 

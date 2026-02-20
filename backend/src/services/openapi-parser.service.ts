@@ -1,5 +1,6 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
 import type { OpenAPI, OpenAPIV3 } from 'openapi-types';
+import { ResponseField } from '../types';
 
 interface ParsedParam {
   name: string;
@@ -21,6 +22,7 @@ interface ParsedEndpoint {
   request_headers: ParsedParam[];
   request_body?: { content_type: string; schema?: Record<string, unknown>; example?: unknown };
   response_schema?: { status_codes: Record<string, { description?: string; schema?: Record<string, unknown> }> };
+  response_fields: ResponseField[];
   tags: string[];
 }
 
@@ -82,6 +84,53 @@ function extractSchemaType(schema: OpenAPIV3.SchemaObject | undefined): string {
   if (schema.type === 'integer' || schema.type === 'number') return schema.type;
   if (schema.type === 'boolean') return 'boolean';
   return 'string';
+}
+
+/**
+ * Recursively flatten a response schema into a list of ResponseField objects.
+ * Walks object properties (dot-path), arrays ([] notation), and emits leaf fields.
+ */
+export function flattenResponseSchema(schema: Record<string, unknown> | undefined): ResponseField[] {
+  if (!schema) return [];
+  const fields: ResponseField[] = [];
+  const MAX_DEPTH = 10;
+
+  function walk(node: Record<string, unknown>, prefix: string, depth: number): void {
+    if (depth > MAX_DEPTH) return;
+
+    const type = node.type as string | undefined;
+    const description = node.description as string | undefined;
+
+    if (type === 'object' || node.properties) {
+      const props = node.properties as Record<string, Record<string, unknown>> | undefined;
+      if (props) {
+        for (const [key, prop] of Object.entries(props)) {
+          const path = prefix ? `${prefix}.${key}` : key;
+          walk(prop, path, depth + 1);
+        }
+      }
+    } else if (type === 'array') {
+      const items = node.items as Record<string, unknown> | undefined;
+      if (items) {
+        const arrayPath = prefix ? `${prefix}[]` : '[]';
+        walk(items, arrayPath, depth + 1);
+      }
+    } else if (prefix) {
+      // Leaf node (string, number, integer, boolean, or untyped)
+      const leafType = type || 'string';
+      const leafName = prefix.split('.').pop()!.replace(/\[\]$/, '');
+      fields.push({ path: prefix, type: leafType, description, leaf_name: leafName });
+    }
+  }
+
+  // Handle top-level arrays (e.g., response is an array of objects)
+  if (schema.type === 'array' && schema.items) {
+    walk(schema.items as Record<string, unknown>, '', 0);
+  } else {
+    walk(schema, '', 0);
+  }
+
+  return fields;
 }
 
 /**
@@ -232,6 +281,12 @@ class OpenApiParserService {
       response_schema = { status_codes };
     }
 
+    // Flatten response schema into response_fields
+    const cleanResponseSchema = response_schema ? stripCircular(response_schema) as ParsedEndpoint['response_schema'] : undefined;
+    const successSchema = cleanResponseSchema?.status_codes?.['200']?.schema
+      || cleanResponseSchema?.status_codes?.['201']?.schema;
+    const response_fields = flattenResponseSchema(successSchema);
+
     return {
       slug,
       name,
@@ -241,7 +296,8 @@ class OpenApiParserService {
       query_params,
       request_headers,
       request_body: request_body ? stripCircular(request_body) as ParsedEndpoint['request_body'] : undefined,
-      response_schema: response_schema ? stripCircular(response_schema) as ParsedEndpoint['response_schema'] : undefined,
+      response_schema: cleanResponseSchema,
+      response_fields,
       tags,
     };
   }

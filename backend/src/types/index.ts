@@ -116,6 +116,13 @@ export interface ResponseSchemaDef {
   status_codes: Record<string, { description?: string; schema?: Record<string, unknown> }>;
 }
 
+export interface ResponseField {
+  path: string;
+  type: string;
+  description?: string;
+  leaf_name: string;
+}
+
 export interface DependencyDef {
   api_slug: string;
   field_mappings: { source: string; target: string }[];
@@ -135,6 +142,7 @@ export interface ApiDefinition {
   request_headers: ParamDefinition[];
   request_body: RequestBodyDef | null;
   response_schema: ResponseSchemaDef | null;
+  response_fields: ResponseField[];
   provides: string[];
   depends_on: DependencyDef[];
   tags: string[];
@@ -212,6 +220,27 @@ export interface ExecutionPlan {
   errors: string[];
 }
 
+// ── Auto-Resolver types ──────────────────────────────────
+export interface AutoResolveApiDetail {
+  method: string;
+  name: string;
+  path: string;
+  query_params: ParamDefinition[];
+  response_fields: ResponseField[];
+  contextParams: string[];
+  injectedParams: Record<string, { source_slug: string; source_path: string }>;
+  unresolvedParams: string[];
+}
+
+export interface AutoResolveResult {
+  calls: OrchestratorApiCall[];
+  layers: ExecutionLayer[];
+  dependencyEdges: { from: string; to: string; mappings: { source: string; target: string }[] }[];
+  warnings: string[];
+  unresolvedParams: { slug: string; param: string }[];
+  apiDetails: Record<string, AutoResolveApiDetail>;
+}
+
 // ── Export types ──────────────────────────────────────────
 export type ExportFormat = 'openapi3_json' | 'openapi3_yaml' | 'swagger2_json';
 export type ExportScope = 'all' | 'assigned';
@@ -252,54 +281,3 @@ export interface ToolkitConfig {
   show_intermediate_steps: boolean;
 }
 
-// ── Use-Case Template types ──────────────────────────────
-export interface UseCaseContextParam {
-  name: string;
-  type: string;
-  description?: string;
-  example?: string;
-  required: boolean;
-}
-
-export interface UseCaseCallDef {
-  slug: string;
-  param_mapping: Record<string, string>;
-  headers?: Record<string, string>;
-  body?: string;
-  description?: string;
-}
-
-export interface UseCaseTemplate {
-  id: string;
-  tenant_id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  required_context: UseCaseContextParam[];
-  calls: UseCaseCallDef[];
-  mode: 'parallel' | 'sequential';
-  tags: string[];
-  is_active: boolean;
-  created_by: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface UseCaseExecutionResult {
-  template_slug: string;
-  template_name: string;
-  totalDurationMs: number;
-  mode: 'parallel' | 'sequential';
-  context: Record<string, string>;
-  results: OrchestratorCallResult[];
-}
-
-export interface UseCaseListItem {
-  slug: string;
-  name: string;
-  description: string | null;
-  required_context: UseCaseContextParam[];
-  tags: string[];
-  call_count: number;
-  mode: 'parallel' | 'sequential';
-}

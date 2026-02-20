@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-02-20
+
+### Added
+
+- **Auto-Resolving API Dependencies** — Gateway automatically resolves parameter dependencies between APIs by matching response field leaf names to query parameters. New `POST /gw/query { slugs, context }` format alongside existing `calls[]` format (backward compatible)
+- **Flow Designer (Wizard Step 4)** — Visual dependency graph in the Connection Wizard showing execution layers, color-coded parameter sources (green=context, blue=auto-injected, red=unresolved), and SVG connector lines between APIs
+- **Response Fields Parser** — OpenAPI response schemas are flattened into `response_fields` at import time, enabling auto-dependency resolution. Existing definitions can be backfilled via `POST /api/registry/backfill-response-fields`
+- **Auto-Resolve Preview** — `POST /api/orchestrator/auto-resolve-preview` endpoint for the Flow Designer to preview dependency resolution before execution
+- **Logo Support** — Header and login page now use image files (`/logo.svg`, `/login_logo.svg`) from `frontend/public/` instead of inline SVG icons
+- Database migration 012 for `response_fields` JSONB column on `api_definitions`
+
+### Changed
+
+- **Connection Wizard** — Expanded from 5 to 6 steps: Connection → API Key → APIs (with method filter) → Flow Designer → Parameters → Output
+- **Export Center** — Simplified from 4 tabs to 2 (OpenAPI Spec + Toolkit Config)
+
+### Removed
+
+- **Use-Case Templates** — Removed in favor of the auto-resolver which handles dependency resolution dynamically. Deleted pages, services, routes, and types
+- **Use-Case Spec / Prompt Spec** export tabs and endpoints
+- **Orchestration output tab** from wizard Step 6
+
 ## [1.7.0] - 2026-02-20
 
 ### Changed

@@ -37,7 +37,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'APIs',
     items: [
       { to: '/registry', label: 'Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
-      { to: '/use-cases', label: 'Use Cases', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
       { to: '/orchestration', label: 'Orchestration', icon: 'M4 6h4v4H4V6zm0 8h4v4H4v-4zm12-8h4v4h-4V6zm0 8h4v4h-4v-4zM10 8h4M10 16h4M8 12h8' },
     ],
   },
@@ -163,11 +162,7 @@ export default function Layout() {
             )}
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+            <img src="/logo.svg" alt="Syntax" className="h-7 w-auto" />
             <span className="font-bold text-gray-900 dark:text-white text-sm hidden sm:inline">Syntax API Gateway</span>
           </div>
         </div>

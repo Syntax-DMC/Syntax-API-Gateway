@@ -1,6 +1,6 @@
 # Syntax DM Gateway
 
-Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secure, multi-tenant proxy layer with built-in admin UI for managing SAP connections, API tokens, and request logs. Includes an **orchestration engine** that lets AI agents execute multiple SAP DM API calls in a single request, **use-case templates** ("recipes") for grouping API calls into named workflows, and an **export center** for generating OpenAPI specs and prompt specifications for agent integration.
+Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secure, multi-tenant proxy layer with built-in admin UI for managing SAP connections, API tokens, and request logs. Includes an **orchestration engine** with **auto-resolving API dependencies** that lets AI agents execute multiple SAP DM API calls in a single request, and an **export center** for generating OpenAPI specs and toolkit configs for agent integration.
 
 ## Features
 
@@ -8,11 +8,11 @@ Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secu
 - **AI Agent Proxy** — POST-only forwarding with encrypted API key storage
 - **API Registry** — Import OpenAPI/Swagger specs (multi-file batch upload), manage API definitions with versioning and revert
 - **Orchestration Engine** — Execute multiple SAP DM API calls in one request with dependency resolution
-- **Use-Case Templates** — Named "recipes" grouping multiple API calls with context parameters, discoverable and executable via gateway
-- **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs, toolkit configs, use-case specs, and prompt specifications for agent integration
-- **Connection Wizard** — Step-by-step guided connection setup with automatic URL, OAuth2, and agent endpoint validation
+- **Auto-Resolving Dependencies** — Send `{ slugs, context }` and the gateway automatically resolves parameter dependencies between APIs by matching response fields to query parameters
+- **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs and toolkit configs for agent integration
+- **Connection Wizard** — 6-step guided flow with visual Flow Designer showing API dependency graphs
 - **Multi-Tenancy** — tenant-scoped connections, tokens, and users with per-tenant roles
-- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, orchestration, use cases, and export
+- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, orchestration, and export
 - **Security** — AES-256-GCM secret encryption, Helmet, CORS, rate limiting, token revocation
 - **Request Logging** — async fire-and-forget with header redaction and body size cap (64 KB)
 
@@ -140,7 +140,7 @@ The script uses `key/gatewayPair.pem` for SSH access. EC2 host and user are conf
 ```
 ├── backend/
 │   ├── src/
-│   │   ├── db/migrations/     # SQL migrations (001–011)
+│   │   ├── db/migrations/     # SQL migrations (001–012)
 │   │   ├── middleware/         # auth, cors, rate-limit, token-auth, request-logger
 │   │   ├── routes/            # Express routers (auth, connections, registry, orchestrator, export, ...)
 │   │   ├── services/          # Business logic (proxy, crypto, registry, orchestrator, export, ...)
@@ -155,7 +155,7 @@ The script uses `key/gatewayPair.pem` for SSH access. EC2 host and user are conf
 │   │   ├── hooks/             # useApi, useAuth, useTheme
 │   │   ├── types/index.ts     # Frontend type definitions
 │   │   └── pages/             # Dashboard, Connections, Tokens, Logs, Explorer,
-│   │                          # Registry, Orchestration, Export Center, ...
+│   │                          # Registry, Orchestration, Export Center
 │   └── package.json
 ├── scripts/
 │   └── deploy.sh              # Build + deploy to EC2
@@ -183,6 +183,7 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | 009 | Connection-API assignments |
 | 010 | Export audit logs |
 | 011 | Use-case templates |
+| 012 | Response fields for auto-dependency resolution |
 
 ## API Overview
 
@@ -210,11 +211,8 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | GET | `/api/export/connections/:id` | Download OpenAPI/Swagger spec |
 | GET | `/api/export/connections/:id/preview` | Preview generated spec |
 | GET | `/api/export/connections/:id/toolkit-config` | GenAI Studio toolkit config |
-| GET | `/api/export/connections/:id/use-cases` | Download use-case OpenAPI spec |
-| GET | `/api/export/connections/:id/prompt-spec` | Download prompt specification (markdown) |
-| GET/POST | `/api/use-cases` | Use-case template CRUD |
-| POST | `/api/use-cases/:id/validate` | Validate template slug references |
-| POST | `/api/use-cases/:id/test` | Test template execution |
+| POST | `/api/orchestrator/auto-resolve-preview` | Preview auto-resolved dependency graph |
+| POST | `/api/registry/backfill-response-fields` | Backfill response fields for existing definitions |
 | POST | `/api/connections/test-url` | Pre-save URL reachability test |
 | POST | `/api/connections/test-oauth` | Pre-save OAuth2 credential test |
 | POST | `/api/connections/test-agent` | Pre-save agent endpoint test |
@@ -228,12 +226,24 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | ALL | `/gw/dm/*` | SAP DM proxy (API key auth) |
 | POST | `/gw/agent/*` | AI Agent proxy (API key auth) |
 | POST | `/gw/query` | Orchestrated multi-API query (API key auth) |
-| GET | `/gw/use-cases` | Discover available use-case templates (API key auth) |
-| POST | `/gw/use-cases/:slug` | Execute use-case template (API key auth) |
 
 ### Orchestrated Query
 
-Send a single request to execute multiple SAP DM API calls:
+Send a single request to execute multiple SAP DM API calls. Two formats are supported:
+
+**Auto-resolved (recommended)** — the gateway automatically resolves dependencies between APIs:
+
+```bash
+curl -X POST https://gateway/gw/query \
+  -H "x-api-key: sdmg_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slugs": ["sfc-detail", "order-detail"],
+    "context": { "plant": "1000", "sfc": "SFC-001" }
+  }'
+```
+
+**Explicit calls** — manually specify parameters per API:
 
 ```bash
 curl -X POST https://gateway/gw/query \
@@ -250,24 +260,6 @@ curl -X POST https://gateway/gw/query \
 
 The gateway resolves dependencies, executes calls in parallel or sequential layers, and returns consolidated results.
 
-### Use-Case Templates
-
-Execute named "recipes" that group multiple API calls with context parameters:
-
-```bash
-curl -X POST https://gateway/gw/use-cases/shift-handover \
-  -H "x-api-key: sdmg_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "context": {
-      "plant": "1000",
-      "workcenter": "WC-001"
-    }
-  }'
-```
-
-Templates are configurable in the admin UI — define required context parameters and select which APIs to call using the same slug picker as the Orchestration Workbench.
-
 ### Export for Agent Integration
 
 Generate OpenAPI specs describing gateway endpoints for AI agent discovery:
@@ -275,8 +267,6 @@ Generate OpenAPI specs describing gateway endpoints for AI agent discovery:
 - **OpenAPI 3.0** (JSON/YAML) and **Swagger 2.0** (JSON)
 - Includes `POST /gw/query` endpoint with all assigned API slugs and parameter schemas
 - **Toolkit Config** JSON for GenAI Studio with gateway URL and API key header
-- **Use-Case Spec** — OpenAPI 3.0 spec for use-case template discovery and execution endpoints
-- **Prompt Spec** — Markdown document for AI agent system prompts with available use cases, parameters, and examples
 - Configurable gateway URL and export scope
 
 ## Environment Variables

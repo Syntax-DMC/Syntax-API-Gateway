@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { authMiddleware, requireActiveTenant, requireTenantAdmin } from '../middleware/auth';
 import { registryService } from '../services/registry.service';
-import { openApiParserService } from '../services/openapi-parser.service';
+import { openApiParserService, flattenResponseSchema } from '../services/openapi-parser.service';
 import { assignmentService } from '../services/assignment.service';
 import { explorerService } from '../services/explorer.service';
 import { AuthenticatedRequest } from '../types';
@@ -182,6 +182,7 @@ router.post('/import', async (req: AuthenticatedRequest, res: Response) => {
           tags: [...new Set([...ep.tags, ...extraTags])],
           version: parseResult.version,
           spec_format: parseResult.spec_format,
+          provides: [...new Set(ep.response_fields.map(f => f.leaf_name))],
         }));
 
         if (preview) {
@@ -223,6 +224,33 @@ router.post('/import', async (req: AuthenticatedRequest, res: Response) => {
     res.json(results);
   } catch (err) {
     console.error('Import registry error:', (err as Error).message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /backfill-response-fields — Recompute response_fields for all existing definitions
+router.post('/backfill-response-fields', requireTenantAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const defs = await registryService.listByTenant(req.user!.activeTenantId!);
+    let updated = 0;
+    for (const def of defs) {
+      if (def.response_schema?.status_codes) {
+        const schema200 = def.response_schema.status_codes['200']?.schema
+          || def.response_schema.status_codes['201']?.schema;
+        if (schema200) {
+          const fields = flattenResponseSchema(schema200);
+          const provides = [...new Set(fields.map(f => f.leaf_name))];
+          await registryService.update(def.id, req.user!.activeTenantId!, req.user!.userId, {
+            response_fields: fields,
+            provides,
+          });
+          updated++;
+        }
+      }
+    }
+    res.json({ updated, total: defs.length });
+  } catch (err) {
+    console.error('Backfill response fields error:', (err as Error).message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
