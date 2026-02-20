@@ -13,6 +13,7 @@ import UsersPage from './pages/UsersPage';
 import RegistryPage from './pages/RegistryPage';
 import RegistryDetailPage from './pages/RegistryDetailPage';
 import ExportCenterPage from './pages/ExportCenterPage';
+import AgentEmulatorPage from './pages/AgentEmulatorPage';
 
 export default function App() {
   const auth = useAuthProvider();
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/explorer" element={<ExplorerPage />} />
             <Route path="/registry" element={<RegistryPage />} />
             <Route path="/registry/:id" element={<RegistryDetailPage />} />
+            <Route path="/emulator" element={<AgentEmulatorPage />} />
             <Route path="/export" element={<RequireAdmin><ExportCenterPage /></RequireAdmin>} />
             <Route path="/tenants" element={<RequireSuperadmin><TenantsPage /></RequireSuperadmin>} />
             <Route path="/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-02-20
+
+### Added
+
+- **Agent Emulator** — New page under Tools for testing gateway endpoints as an AI agent. Paste an API key and send real requests through the gateway proxy
+- Two modes: **Orchestrated Query** (`POST /gw/query` with slugs + context) and **Direct SAP Call** (`/gw/dm/*` with any HTTP method)
+- Sidebar slug picker loads assigned APIs from selected connection for easy selection
+- Context parameter editor with required param hints from API definitions
+- Full response display with status, headers, body (JSON-formatted), and duration
+- **cURL tab** — generates a copyable curl command from the current request
+- Manual slug input for testing without a connection selected
+- Ctrl+Enter keyboard shortcut to send
+
 ## [1.10.0] - 2026-02-20
 
 ### Removed

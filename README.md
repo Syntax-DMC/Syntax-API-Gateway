@@ -12,7 +12,8 @@ Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secu
 - **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs and toolkit configs for agent integration
 - **Connection Wizard** — 6-step guided flow with visual Flow Designer showing API dependency graphs
 - **Multi-Tenancy** — tenant-scoped connections, tokens, and users with per-tenant roles
-- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, and export
+- **Agent Emulator** — Test gateway endpoints as an AI agent with real API key auth, orchestrated queries, and cURL export
+- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, agent emulator, and export
 - **Security** — AES-256-GCM secret encryption, Helmet, CORS, rate limiting, token revocation
 - **Request Logging** — async fire-and-forget with header redaction and body size cap (64 KB)
 
