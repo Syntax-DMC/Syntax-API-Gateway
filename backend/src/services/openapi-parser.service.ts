@@ -46,20 +46,29 @@ const CONTEXT_VAR_MAP: Record<string, string> = {
   batch: '{{batch}}',
 };
 
-function generateSlug(method: string, path: string, operationId?: string): string {
-  if (operationId) {
-    return operationId
-      .replace(/[A-Z]/g, (c, i) => (i > 0 ? '-' : '') + c.toLowerCase())
-      .replace(/[^a-z0-9-]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 150);
-  }
-  const pathSlug = path
-    .replace(/\{[^}]+\}/g, '')
-    .replace(/[^a-z0-9]+/gi, '-')
+function slugify(text: string): string {
+  return text
+    .replace(/[A-Z]/g, (c, i) => (i > 0 ? '-' : '') + c.toLowerCase())
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
     .replace(/^-|-$/g, '')
     .toLowerCase();
-  return `${method.toLowerCase()}-${pathSlug}`.slice(0, 150);
+}
+
+function generateSlug(apiTitle: string, method: string, path: string, operationId?: string): string {
+  const prefix = slugify(apiTitle);
+  let suffix: string;
+  if (operationId) {
+    suffix = slugify(operationId);
+  } else {
+    const pathSlug = path
+      .replace(/\{[^}]+\}/g, '')
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+    suffix = `${method.toLowerCase()}-${pathSlug}`;
+  }
+  return `${prefix}-${suffix}`.slice(0, 150);
 }
 
 function detectContextVar(paramName: string): string | undefined {
@@ -119,7 +128,7 @@ class OpenApiParserService {
         if (!operation) continue;
 
         try {
-          const endpoint = this.parseOperation(method, pathStr, operation, pathItem as OpenAPIV3.PathItemObject);
+          const endpoint = this.parseOperation(title, method, pathStr, operation, pathItem as OpenAPIV3.PathItemObject);
           endpoints.push(endpoint);
         } catch (err) {
           errors.push(`${method.toUpperCase()} ${pathStr}: ${(err as Error).message}`);
@@ -131,12 +140,13 @@ class OpenApiParserService {
   }
 
   private parseOperation(
+    apiTitle: string,
     method: string,
     path: string,
     operation: OpenAPIV3.OperationObject,
     pathItem: OpenAPIV3.PathItemObject
   ): ParsedEndpoint {
-    const slug = generateSlug(method, path, operation.operationId);
+    const slug = generateSlug(apiTitle, method, path, operation.operationId);
     const name = operation.summary || operation.operationId || `${method.toUpperCase()} ${path}`;
     const description = operation.description;
     const tags = operation.tags || [];

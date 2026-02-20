@@ -6,7 +6,7 @@ Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secu
 
 - **SAP DM Proxy** — OAuth2 client_credentials flow with automatic token caching and retry on 401
 - **AI Agent Proxy** — POST-only forwarding with encrypted API key storage
-- **API Registry** — Import OpenAPI/Swagger specs, manage API definitions with versioning and revert
+- **API Registry** — Import OpenAPI/Swagger specs (multi-file batch upload), manage API definitions with versioning and revert
 - **Orchestration Engine** — Execute multiple SAP DM API calls in one request with dependency resolution
 - **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs and GenAI Studio toolkit configs for agent integration
 - **Multi-Tenancy** — tenant-scoped connections, tokens, and users with per-tenant roles
@@ -183,7 +183,7 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | GET/POST | `/api/tenants` | Tenant management (superadmin) |
 | GET/POST | `/api/users` | User management (admin) |
 | GET/POST | `/api/registry` | API Registry CRUD, import, versioning |
-| POST | `/api/registry/import` | Import OpenAPI/Swagger spec |
+| POST | `/api/registry/import` | Import OpenAPI/Swagger spec (multi-file) |
 | POST | `/api/registry/:id/test` | Test single API call |
 | POST | `/api/orchestrator/execute` | Execute orchestrated query (admin) |
 | POST | `/api/orchestrator/validate` | Validate query execution plan |

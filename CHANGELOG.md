@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-20
+
+### Added
+
+- **Multi-File Import** — Upload multiple OpenAPI/Swagger spec files at once in the API Registry import dialog
+  - Queued file list with per-file remove button
+  - Sequential processing with progress indicator
+  - Aggregated results view showing created/skipped/errors per spec and totals
+
+### Fixed
+
+- **Slug Collisions on Import** — API definition slugs now include the spec title as prefix (e.g. `sfc-api-get-sfc-details` instead of `get-sfc-details`), preventing duplicate slug errors when importing multiple specs with similar endpoints
+
 ## [1.1.0] - 2026-02-20
 
 ### Added

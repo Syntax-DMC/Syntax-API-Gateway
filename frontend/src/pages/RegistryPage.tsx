@@ -55,12 +55,14 @@ export default function RegistryPage() {
 
   // Import modal
   const [showImport, setShowImport] = useState(false);
+  const [specFiles, setSpecFiles] = useState<{ name: string; content: string }[]>([]);
   const [specInput, setSpecInput] = useState('');
   const [importTags, setImportTags] = useState('');
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importPreviews, setImportPreviews] = useState<ImportPreview[]>([]);
+  const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState('');
 
   // Create handlers
   async function handleCreate() {
@@ -85,58 +87,98 @@ export default function RegistryPage() {
 
   // Import handlers
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setSpecInput(reader.result as string);
-    reader.readAsText(file);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const pending: Promise<{ name: string; content: string }>[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      pending.push(
+        new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ name: file.name, content: reader.result as string });
+          reader.readAsText(file);
+        })
+      );
+    }
+    Promise.all(pending).then(results => {
+      setSpecFiles(prev => [...prev, ...results]);
+    });
+    e.target.value = '';
+  }
+
+  function removeFile(index: number) {
+    setSpecFiles(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function getSpecsToProcess(): { name: string; content: string }[] {
+    if (specFiles.length > 0) return specFiles;
+    if (specInput.trim()) return [{ name: 'Pasted spec', content: specInput }];
+    return [];
   }
 
   async function handlePreview() {
+    const specs = getSpecsToProcess();
+    if (specs.length === 0) return;
     setImporting(true);
     setImportError('');
-    setImportResult(null);
-    try {
-      const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
-      const result = await api<ImportPreview>('/api/registry/import', 'POST', {
-        spec: specInput,
-        tags,
-        preview: true,
-      });
-      setImportPreview(result);
-    } catch (err) {
-      setImportError((err as Error).message);
-    } finally {
-      setImporting(false);
+    setImportResults([]);
+    setImportPreviews([]);
+    const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
+    const previews: ImportPreview[] = [];
+    const errors: string[] = [];
+    for (const spec of specs) {
+      try {
+        setImportProgress(`Parsing ${spec.name}...`);
+        const result = await api<ImportPreview>('/api/registry/import', 'POST', {
+          spec: spec.content, tags, preview: true,
+        });
+        previews.push(result);
+      } catch (err) {
+        errors.push(`${spec.name}: ${(err as Error).message}`);
+      }
     }
+    setImportPreviews(previews);
+    if (errors.length > 0) setImportError(errors.join('\n'));
+    setImportProgress('');
+    setImporting(false);
   }
 
   async function handleImport() {
+    const specs = getSpecsToProcess();
+    if (specs.length === 0) return;
     setImporting(true);
     setImportError('');
-    try {
-      const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
-      const result = await api<ImportResult>('/api/registry/import', 'POST', {
-        spec: specInput,
-        tags,
-      });
-      setImportResult(result);
-      setImportPreview(null);
-      reload();
-    } catch (err) {
-      setImportError((err as Error).message);
-    } finally {
-      setImporting(false);
+    const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
+    const results: ImportResult[] = [];
+    const errors: string[] = [];
+    for (const spec of specs) {
+      try {
+        setImportProgress(`Importing ${spec.name}...`);
+        const result = await api<ImportResult>('/api/registry/import', 'POST', {
+          spec: spec.content, tags,
+        });
+        results.push(result);
+      } catch (err) {
+        errors.push(`${spec.name}: ${(err as Error).message}`);
+      }
     }
+    setImportResults(results);
+    setImportPreviews([]);
+    if (errors.length > 0) setImportError(errors.join('\n'));
+    setImportProgress('');
+    setImporting(false);
+    reload();
   }
 
   function closeImport() {
     setShowImport(false);
+    setSpecFiles([]);
     setSpecInput('');
     setImportTags('');
-    setImportPreview(null);
-    setImportResult(null);
+    setImportPreviews([]);
+    setImportResults([]);
     setImportError('');
+    setImportProgress('');
   }
 
   async function handleDelete(id: string, name: string) {
@@ -305,91 +347,123 @@ export default function RegistryPage() {
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Import OpenAPI Specification</h2>
-            {importError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{importError}</div>}
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Import OpenAPI Specifications</h2>
+            {importError && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2 whitespace-pre-line">{importError}</div>}
+            {importProgress && <div className="text-blue-400 text-sm">{importProgress}</div>}
 
-            {!importPreview && !importResult && (
+            {importPreviews.length === 0 && importResults.length === 0 && (
               <>
                 <div>
-                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Upload File</label>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Upload Files</label>
                   <input
                     type="file"
                     accept=".json,.yaml,.yml"
+                    multiple
                     onChange={handleFileUpload}
                     className="w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Or paste spec (JSON / YAML)</label>
-                  <textarea
-                    value={specInput}
-                    onChange={e => setSpecInput(e.target.value)}
-                    rows={10}
-                    className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder='{"openapi": "3.0.0", ...}'
-                  />
-                </div>
+                {specFiles.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="block text-sm text-gray-500 dark:text-gray-400">Queued Files ({specFiles.length})</label>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {specFiles.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm">
+                          <span className="text-gray-700 dark:text-gray-300 truncate">{f.name}</span>
+                          <button onClick={() => removeFile(i)} className="text-red-400 hover:text-red-300 text-xs ml-2 shrink-0">Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {specFiles.length === 0 && (
+                  <div>
+                    <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Or paste spec (JSON / YAML)</label>
+                    <textarea
+                      value={specInput}
+                      onChange={e => setSpecInput(e.target.value)}
+                      rows={10}
+                      className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder='{"openapi": "3.0.0", ...}'
+                    />
+                  </div>
+                )}
                 <Field label="Additional Tags (comma-separated)" value={importTags} onChange={e => setImportTags(e.target.value)} placeholder="sap-dm, production" />
                 <div className="flex justify-end gap-3 pt-2">
                   <button onClick={closeImport} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
-                  <button onClick={handlePreview} disabled={importing || !specInput} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+                  <button onClick={handlePreview} disabled={importing || (specFiles.length === 0 && !specInput.trim())} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
                     {importing ? 'Parsing...' : 'Preview'}
                   </button>
                 </div>
               </>
             )}
 
-            {importPreview && !importResult && (
+            {importPreviews.length > 0 && importResults.length === 0 && (
               <>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  <span className="font-medium text-gray-900 dark:text-white">{importPreview.title}</span> v{importPreview.version} ({importPreview.spec_format}) — {importPreview.endpoints.length} endpoints
-                </div>
-                {importPreview.errors.length > 0 && (
-                  <div className="text-yellow-400 text-xs bg-yellow-500/10 rounded-lg px-4 py-2">
-                    {importPreview.errors.map((e, i) => <div key={i}>{e}</div>)}
+                {importPreviews.map((preview, pi) => (
+                  <div key={pi} className="space-y-2">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <span className="font-medium text-gray-900 dark:text-white">{preview.title}</span> v{preview.version} ({preview.spec_format}) — {preview.endpoints.length} endpoints
+                    </div>
+                    {preview.errors.length > 0 && (
+                      <div className="text-yellow-400 text-xs bg-yellow-500/10 rounded-lg px-4 py-2">
+                        {preview.errors.map((e, i) => <div key={i}>{e}</div>)}
+                      </div>
+                    )}
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+                            <th className="px-3 py-2 font-medium">Method</th>
+                            <th className="px-3 py-2 font-medium">Path</th>
+                            <th className="px-3 py-2 font-medium">Name</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.endpoints.map((ep, i) => (
+                            <tr key={i} className="border-b border-gray-100 dark:border-gray-700/50">
+                              <td className="px-3 py-1.5">
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${METHOD_COLORS[ep.method] || ''}`}>{ep.method}</span>
+                              </td>
+                              <td className="px-3 py-1.5 font-mono text-gray-500 dark:text-gray-400">{ep.path}</td>
+                              <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">{ep.name}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                )}
-                <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-left text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
-                        <th className="px-3 py-2 font-medium">Method</th>
-                        <th className="px-3 py-2 font-medium">Path</th>
-                        <th className="px-3 py-2 font-medium">Name</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importPreview.endpoints.map((ep, i) => (
-                        <tr key={i} className="border-b border-gray-100 dark:border-gray-700/50">
-                          <td className="px-3 py-1.5">
-                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${METHOD_COLORS[ep.method] || ''}`}>{ep.method}</span>
-                          </td>
-                          <td className="px-3 py-1.5 font-mono text-gray-500 dark:text-gray-400">{ep.path}</td>
-                          <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">{ep.name}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                ))}
+                <div className="text-sm text-gray-400 dark:text-gray-500 pt-1">
+                  Total: {importPreviews.reduce((sum, p) => sum + p.endpoints.length, 0)} endpoints across {importPreviews.length} spec(s)
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => { setImportPreview(null); setImportError(''); }} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
+                  <button onClick={() => { setImportPreviews([]); setImportError(''); }} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Back</button>
                   <button onClick={handleImport} disabled={importing} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                    {importing ? 'Importing...' : `Import ${importPreview.endpoints.length} Endpoints`}
+                    {importing ? 'Importing...' : `Import ${importPreviews.reduce((sum, p) => sum + p.endpoints.length, 0)} Endpoints`}
                   </button>
                 </div>
               </>
             )}
 
-            {importResult && (
+            {importResults.length > 0 && (
               <>
-                <div className="space-y-2 text-sm">
-                  <div className="text-green-400">Created: {importResult.created}</div>
-                  {importResult.skipped > 0 && <div className="text-yellow-400">Skipped (duplicate slugs): {importResult.skipped}</div>}
-                  {importResult.errors.length > 0 && (
-                    <div className="text-red-400 text-xs bg-red-500/10 rounded-lg px-4 py-2">
-                      {importResult.errors.map((e, i) => <div key={i}>{e}</div>)}
+                <div className="space-y-3">
+                  {importResults.map((result, i) => (
+                    <div key={i} className="space-y-1 text-sm">
+                      <div className="font-medium text-gray-900 dark:text-white">{result.title}</div>
+                      <div className="text-green-400">Created: {result.created}</div>
+                      {result.skipped > 0 && <div className="text-yellow-400">Skipped (duplicate slugs): {result.skipped}</div>}
+                      {result.errors.length > 0 && (
+                        <div className="text-red-400 text-xs bg-red-500/10 rounded-lg px-4 py-2">
+                          {result.errors.map((e, j) => <div key={j}>{e}</div>)}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
+                </div>
+                <div className="text-sm text-gray-400 dark:text-gray-500 pt-1 border-t border-gray-200 dark:border-gray-700">
+                  Total created: {importResults.reduce((sum, r) => sum + r.created, 0)} | Skipped: {importResults.reduce((sum, r) => sum + r.skipped, 0)}
                 </div>
                 <div className="flex justify-end pt-2">
                   <button onClick={closeImport} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Done</button>
