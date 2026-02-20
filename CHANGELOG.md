@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Auto-discovery of intermediate APIs** — The orchestrator now automatically pulls in APIs needed to bridge dependency gaps. If API C needs `bom` from API B, and API B needs `material` from API A, selecting only A + C will auto-include B as an intermediate. Iterates up to 5 rounds to resolve transitive chains.
-
 ### Fixed
 
 - **Orchestrator: fix array path extraction for dependency injection** — `extractByDotPath` now handles `[]` notation (empty brackets = first array element) from response_fields paths like `value[].material`. Previously only `[0]` worked, breaking automatic dependency resolution between APIs (e.g., SFC Details → Material Details).
 - **Orchestrator: restrict auto-resolve to context_var params only** — Generic field names like `version`, `type`, `size` created false dependencies between APIs and circular dependency cycles. Now only known SAP DM context params (`plant`, `sfc`, `material`, `order`, `bom`, etc. — those with `context_var` set) are auto-resolved. Generic params are left for the user to fill in.
+- **Removed auto-discovery of intermediate APIs** — SAP DM APIs cross-reference each other's context fields, making automatic intermediate discovery impractical. The resolver now only resolves dependencies within the user's explicitly selected APIs.
 
 ### Changed
 
