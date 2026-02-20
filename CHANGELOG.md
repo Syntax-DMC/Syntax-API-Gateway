@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-02-20
+
+### Removed
+
+- **Orchestration Workbench** — Removed the admin Orchestration page and sidebar entry. The gateway orchestrator (`POST /gw/query`) and auto-resolve preview (used by the Connection Wizard Flow Designer) remain fully functional
+- Removed admin `POST /api/orchestrator/execute` and `POST /api/orchestrator/validate` endpoints (only used by the workbench UI)
+- Removed unused frontend types (`OrchestratorCallResult`, `OrchestratorResult`)
+
 ## [1.9.0] - 2026-02-20
 
 ### Added

@@ -37,7 +37,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'APIs',
     items: [
       { to: '/registry', label: 'Registry', icon: 'M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm0 0h16M8 12h8M8 16h4' },
-      { to: '/orchestration', label: 'Orchestration', icon: 'M4 6h4v4H4V6zm0 8h4v4H4v-4zm12-8h4v4h-4V6zm0 8h4v4h-4v-4zM10 8h4M10 16h4M8 12h8' },
     ],
   },
   {

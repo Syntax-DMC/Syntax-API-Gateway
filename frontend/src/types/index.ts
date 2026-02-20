@@ -237,26 +237,6 @@ export interface OrchestratorApiCall {
   body?: string;
 }
 
-export interface OrchestratorCallResult {
-  slug: string;
-  status: 'fulfilled' | 'rejected';
-  statusCode?: number;
-  responseHeaders?: Record<string, string>;
-  responseBody?: unknown;
-  responseSizeBytes?: number;
-  durationMs?: number;
-  error?: string;
-  layer?: number;
-  injectedParams?: Record<string, string>;
-}
-
-export interface OrchestratorResult {
-  totalDurationMs: number;
-  mode: 'parallel' | 'sequential';
-  layers?: ExecutionLayer[];
-  results: OrchestratorCallResult[];
-}
-
 // ── Auto-Resolver types ──────────────────────────────────
 export interface AutoResolveApiDetail {
   method: string;

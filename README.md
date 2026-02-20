@@ -12,7 +12,7 @@ Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secu
 - **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs and toolkit configs for agent integration
 - **Connection Wizard** — 6-step guided flow with visual Flow Designer showing API dependency graphs
 - **Multi-Tenancy** — tenant-scoped connections, tokens, and users with per-tenant roles
-- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, orchestration, and export
+- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, and export
 - **Security** — AES-256-GCM secret encryption, Helmet, CORS, rate limiting, token revocation
 - **Request Logging** — async fire-and-forget with header redaction and body size cap (64 KB)
 
@@ -205,13 +205,11 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | POST | `/api/registry/import` | Import OpenAPI/Swagger specs (single or batch) |
 | DELETE | `/api/registry/all` | Delete all API definitions (admin only) |
 | POST | `/api/registry/:id/test` | Test single API call |
-| POST | `/api/orchestrator/execute` | Execute orchestrated query (admin) |
-| POST | `/api/orchestrator/validate` | Validate query execution plan |
+| POST | `/api/orchestrator/auto-resolve-preview` | Preview auto-resolved dependency graph |
 | GET | `/api/export` | List connections with export metadata |
 | GET | `/api/export/connections/:id` | Download OpenAPI/Swagger spec |
 | GET | `/api/export/connections/:id/preview` | Preview generated spec |
 | GET | `/api/export/connections/:id/toolkit-config` | GenAI Studio toolkit config |
-| POST | `/api/orchestrator/auto-resolve-preview` | Preview auto-resolved dependency graph |
 | POST | `/api/registry/backfill-response-fields` | Backfill response fields for existing definitions |
 | POST | `/api/connections/test-url` | Pre-save URL reachability test |
 | POST | `/api/connections/test-oauth` | Pre-save OAuth2 credential test |

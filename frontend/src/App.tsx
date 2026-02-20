@@ -12,7 +12,6 @@ import TenantsPage from './pages/TenantsPage';
 import UsersPage from './pages/UsersPage';
 import RegistryPage from './pages/RegistryPage';
 import RegistryDetailPage from './pages/RegistryDetailPage';
-import OrchestrationPage from './pages/OrchestrationPage';
 import ExportCenterPage from './pages/ExportCenterPage';
 
 export default function App() {
@@ -31,7 +30,6 @@ export default function App() {
             <Route path="/explorer" element={<ExplorerPage />} />
             <Route path="/registry" element={<RegistryPage />} />
             <Route path="/registry/:id" element={<RegistryDetailPage />} />
-            <Route path="/orchestration" element={<OrchestrationPage />} />
             <Route path="/export" element={<RequireAdmin><ExportCenterPage /></RequireAdmin>} />
             <Route path="/tenants" element={<RequireSuperadmin><TenantsPage /></RequireSuperadmin>} />
             <Route path="/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
