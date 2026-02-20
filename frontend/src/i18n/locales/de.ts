@@ -394,14 +394,11 @@ const de: Translations = {
 
   emulator: {
     title: 'Agent Emulator',
-    subtitle: 'Simulieren Sie einen Agenten, der das Gateway für SAP DM-Daten aufruft. Wählen Sie eine Verbindung, füllen Sie die Namensräume aus und wählen Sie die gewünschten Daten.',
+    subtitle: 'Simulieren Sie einen Agenten, der das Gateway für SAP DM-Daten aufruft. Wählen Sie eine Verbindung, APIs und Parameter aus und testen Sie.',
     connection: 'Verbindung',
     selectConnection: 'Verbindung auswählen...',
-    namespaces: 'Namensräume',
-    plant: 'Werk',
-    sfc: 'SFC',
-    workcenter: 'Arbeitsplatz',
-    resource: 'Ressource',
+    parameters: 'Parameter',
+    required: 'erforderlich',
     savePreset: 'Preset speichern',
     loadPreset: 'Preset laden',
     noPresets: 'Keine gespeicherten Presets',
@@ -413,7 +410,7 @@ const de: Translations = {
     selectedCount: '{count} ausgewählt',
     total: 'gesamt',
     layers: '{count} Schichten',
-    hint: 'Füllen Sie die Namensräume aus, wählen Sie die gewünschten Daten und klicken Sie auf Testen (oder Strg+Enter).',
+    hint: 'Wählen Sie die gewünschten APIs, füllen Sie die Parameter aus und klicken Sie auf Testen (oder Strg+Enter).',
     noConnection: 'Wählen Sie eine Verbindung aus, um zu beginnen.',
   },
 

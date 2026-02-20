@@ -394,14 +394,11 @@ const fr: Translations = {
 
   emulator: {
     title: 'Émulateur d\'agent',
-    subtitle: 'Simulez un agent appelant la passerelle pour des données SAP DM. Sélectionnez une connexion, remplissez les espaces de noms et choisissez les données à récupérer.',
+    subtitle: 'Simulez un agent appelant la passerelle pour des données SAP DM. Sélectionnez une connexion, choisissez les APIs, remplissez les paramètres et testez.',
     connection: 'Connexion',
     selectConnection: 'Sélectionner une connexion...',
-    namespaces: 'Espaces de noms',
-    plant: 'Usine',
-    sfc: 'SFC',
-    workcenter: 'Poste de travail',
-    resource: 'Ressource',
+    parameters: 'Paramètres',
+    required: 'requis',
     savePreset: 'Enregistrer le preset',
     loadPreset: 'Charger un preset',
     noPresets: 'Aucun preset enregistré',
@@ -413,7 +410,7 @@ const fr: Translations = {
     selectedCount: '{count} sélectionnés',
     total: 'total',
     layers: '{count} couches',
-    hint: 'Remplissez les espaces de noms, sélectionnez les données souhaitées et cliquez sur Tester (ou Ctrl+Entrée).',
+    hint: 'Sélectionnez les APIs souhaitées, remplissez les paramètres et cliquez sur Tester (ou Ctrl+Entrée).',
     noConnection: 'Sélectionnez une connexion pour commencer.',
   },
 

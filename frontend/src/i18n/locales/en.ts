@@ -392,14 +392,11 @@ const en = {
 
   emulator: {
     title: 'Agent Emulator',
-    subtitle: 'Simulate an agent calling the gateway for SAP DM data. Select a connection, fill in namespaces, and choose which data to fetch.',
+    subtitle: 'Simulate an agent calling the gateway for SAP DM data. Select a connection, choose APIs, fill in parameters, and test.',
     connection: 'Connection',
     selectConnection: 'Select a connection...',
-    namespaces: 'Namespaces',
-    plant: 'Plant',
-    sfc: 'SFC',
-    workcenter: 'Workcenter',
-    resource: 'Resource',
+    parameters: 'Parameters',
+    required: 'required',
     savePreset: 'Save Preset',
     loadPreset: 'Load Preset',
     noPresets: 'No saved presets',
@@ -411,7 +408,7 @@ const en = {
     selectedCount: '{count} selected',
     total: 'total',
     layers: '{count} layers',
-    hint: 'Fill in namespaces, select the data you want, and click Test (or Ctrl+Enter).',
+    hint: 'Select the APIs you want, fill in parameters, and click Test (or Ctrl+Enter).',
     noConnection: 'Select a connection to begin.',
   },
 

@@ -394,14 +394,11 @@ const es: Translations = {
 
   emulator: {
     title: 'Emulador de Agente',
-    subtitle: 'Simule un agente que llama al gateway para obtener datos de SAP DM. Seleccione una conexión, complete los espacios de nombres y elija qué datos obtener.',
+    subtitle: 'Simule un agente que llama al gateway para obtener datos de SAP DM. Seleccione una conexión, elija las APIs, complete los parámetros y pruebe.',
     connection: 'Conexión',
     selectConnection: 'Seleccionar una conexión...',
-    namespaces: 'Espacios de nombres',
-    plant: 'Planta',
-    sfc: 'SFC',
-    workcenter: 'Centro de trabajo',
-    resource: 'Recurso',
+    parameters: 'Parámetros',
+    required: 'obligatorio',
     savePreset: 'Guardar preset',
     loadPreset: 'Cargar preset',
     noPresets: 'No hay presets guardados',
@@ -413,7 +410,7 @@ const es: Translations = {
     selectedCount: '{count} seleccionados',
     total: 'total',
     layers: '{count} capas',
-    hint: 'Complete los espacios de nombres, seleccione los datos deseados y haga clic en Probar (o Ctrl+Enter).',
+    hint: 'Seleccione las APIs deseadas, complete los parámetros y haga clic en Probar (o Ctrl+Enter).',
     noConnection: 'Seleccione una conexión para comenzar.',
   },
 

@@ -1,15 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { useI18n } from '../i18n';
-import type { SapConnection, ApiDefinition, OrchestratorResult, OrchestratorCallResult } from '../types';
+import type { SapConnection, ApiDefinition, ParamDefinition, OrchestratorResult, OrchestratorCallResult } from '../types';
 
 interface EmulatorPreset {
   name: string;
-  plant: string;
-  sfc: string;
-  workcenter: string;
-  resource: string;
+  params: Record<string, string>;
 }
 
 const PRESETS_KEY = 'emulator-presets';
@@ -22,8 +19,32 @@ function loadPresets(): EmulatorPreset[] {
   }
 }
 
-function savePresets(presets: EmulatorPreset[]) {
+function savePresetsToStorage(presets: EmulatorPreset[]) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+/** Collect unique context parameters from selected API definitions */
+function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (ParamDefinition & { apiCount: number })[] {
+  const map = new Map<string, ParamDefinition & { apiCount: number }>();
+  for (const def of defs) {
+    if (!selectedSlugs.has(def.slug)) continue;
+    for (const p of def.query_params || []) {
+      const existing = map.get(p.name);
+      if (existing) {
+        existing.apiCount++;
+        if (p.required && !existing.required) existing.required = true;
+        if (p.description && !existing.description) existing.description = p.description;
+        if (p.example && !existing.example) existing.example = p.example;
+      } else {
+        map.set(p.name, { ...p, apiCount: 1 });
+      }
+    }
+  }
+  // Sort: required first, then alphabetical
+  return [...map.values()].sort((a, b) => {
+    if (a.required !== b.required) return a.required ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 export default function AgentEmulatorPage() {
@@ -34,11 +55,8 @@ export default function AgentEmulatorPage() {
   // Connection
   const [connectionId, setConnectionId] = useState('');
 
-  // Namespace fields
-  const [plant, setPlant] = useState('');
-  const [sfc, setSfc] = useState('');
-  const [workcenter, setWorkcenter] = useState('');
-  const [resource, setResource] = useState('');
+  // Dynamic context parameters
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
   // Presets
   const [presets, setPresets] = useState<EmulatorPreset[]>(loadPresets);
@@ -75,6 +93,12 @@ export default function AgentEmulatorPage() {
   // Filter definitions to assigned ones
   const assignedDefs = (allDefs || []).filter((d) => assignedIds.has(d.id) && d.is_active);
 
+  // Collect unique params from selected APIs
+  const contextParams = useMemo(
+    () => collectParams(assignedDefs, selectedSlugs),
+    [assignedDefs, selectedSlugs]
+  );
+
   // Close preset dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -96,13 +120,17 @@ export default function AgentEmulatorPage() {
     });
   }
 
-  // Build context from namespace fields
+  // Update a param value
+  function setParam(name: string, value: string) {
+    setParamValues((prev) => ({ ...prev, [name]: value }));
+  }
+
+  // Build context from param values (only non-empty)
   function buildContext(): Record<string, string> {
     const ctx: Record<string, string> = {};
-    if (plant.trim()) ctx.plant = plant.trim();
-    if (sfc.trim()) ctx.sfc = sfc.trim();
-    if (workcenter.trim()) ctx.workcenter = workcenter.trim();
-    if (resource.trim()) ctx.resource = resource.trim();
+    for (const [key, val] of Object.entries(paramValues)) {
+      if (val.trim()) ctx[key] = val.trim();
+    }
     return ctx;
   }
 
@@ -111,24 +139,18 @@ export default function AgentEmulatorPage() {
     if (!presetName.trim()) return;
     const newPreset: EmulatorPreset = {
       name: presetName.trim(),
-      plant,
-      sfc,
-      workcenter,
-      resource,
+      params: { ...paramValues },
     };
     const updated = [...presets.filter((p) => p.name !== newPreset.name), newPreset];
     setPresets(updated);
-    savePresets(updated);
+    savePresetsToStorage(updated);
     setPresetName('');
     setSaveModalOpen(false);
   }
 
   // Load preset
   function handleLoadPreset(preset: EmulatorPreset) {
-    setPlant(preset.plant);
-    setSfc(preset.sfc);
-    setWorkcenter(preset.workcenter);
-    setResource(preset.resource);
+    setParamValues(preset.params);
     setPresetOpen(false);
   }
 
@@ -137,7 +159,7 @@ export default function AgentEmulatorPage() {
     e.stopPropagation();
     const updated = presets.filter((p) => p.name !== name);
     setPresets(updated);
-    savePresets(updated);
+    savePresetsToStorage(updated);
   }
 
   // Execute test
@@ -155,14 +177,13 @@ export default function AgentEmulatorPage() {
         context: buildContext(),
       });
       setResult(res);
-      // Auto-expand all results
       setExpandedSlugs(new Set(res.results.map((r) => r.slug)));
     } catch (err) {
       setError((err as Error).message || 'Request failed');
     } finally {
       setLoading(false);
     }
-  }, [connectionId, selectedSlugs, plant, sfc, workcenter, resource]);
+  }, [connectionId, selectedSlugs, paramValues]);
 
   // Ctrl+Enter to test
   useEffect(() => {
@@ -195,6 +216,7 @@ export default function AgentEmulatorPage() {
           onChange={(e) => {
             setConnectionId(e.target.value);
             setSelectedSlugs(new Set());
+            setParamValues({});
             setResult(null);
             setError('');
           }}
@@ -211,63 +233,6 @@ export default function AgentEmulatorPage() {
 
       {connectionId && (
         <>
-          {/* Namespaces */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                {t('emulator.namespaces')}
-              </h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSaveModalOpen(true)}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition-colors"
-                >
-                  {t('emulator.savePreset')}
-                </button>
-                <div className="relative" ref={presetRef}>
-                  <button
-                    onClick={() => setPresetOpen(!presetOpen)}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    {t('emulator.loadPreset')}
-                  </button>
-                  {presetOpen && (
-                    <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 overflow-hidden">
-                      {presets.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
-                          {t('emulator.noPresets')}
-                        </p>
-                      ) : (
-                        presets.map((p) => (
-                          <div
-                            key={p.name}
-                            onClick={() => handleLoadPreset(p)}
-                            className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-sm text-gray-700 dark:text-gray-200"
-                          >
-                            <span className="truncate">{p.name}</span>
-                            <button
-                              onClick={(e) => handleDeletePreset(p.name, e)}
-                              className="text-gray-400 hover:text-red-400 transition-colors ml-2 shrink-0"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <NamespaceField label={t('emulator.plant')} value={plant} onChange={setPlant} placeholder="e.g. 1000" />
-              <NamespaceField label={t('emulator.sfc')} value={sfc} onChange={setSfc} placeholder="e.g. SFC-001" />
-              <NamespaceField label={t('emulator.workcenter')} value={workcenter} onChange={setWorkcenter} placeholder="e.g. WC-01" />
-              <NamespaceField label={t('emulator.resource')} value={resource} onChange={setResource} placeholder="e.g. RES-01" />
-            </div>
-          </div>
-
           {/* Data Selection */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
@@ -339,6 +304,88 @@ export default function AgentEmulatorPage() {
             )}
           </div>
 
+          {/* Dynamic Parameters */}
+          {contextParams.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                  {t('emulator.parameters')}
+                </h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSaveModalOpen(true)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition-colors"
+                  >
+                    {t('emulator.savePreset')}
+                  </button>
+                  <div className="relative" ref={presetRef}>
+                    <button
+                      onClick={() => setPresetOpen(!presetOpen)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    >
+                      {t('emulator.loadPreset')}
+                    </button>
+                    {presetOpen && (
+                      <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 overflow-hidden">
+                        {presets.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
+                            {t('emulator.noPresets')}
+                          </p>
+                        ) : (
+                          presets.map((p) => (
+                            <div
+                              key={p.name}
+                              onClick={() => handleLoadPreset(p)}
+                              className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-sm text-gray-700 dark:text-gray-200"
+                            >
+                              <span className="truncate">{p.name}</span>
+                              <button
+                                onClick={(e) => handleDeletePreset(p.name, e)}
+                                className="text-gray-400 hover:text-red-400 transition-colors ml-2 shrink-0"
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {contextParams.map((p) => (
+                  <div key={p.name} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">({p.type || 'string'})</span>
+                      {p.required && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                          {t('emulator.required')}
+                        </span>
+                      )}
+                      <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+                        {p.apiCount} API(s)
+                      </span>
+                    </div>
+                    {p.description && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{p.description}</p>
+                    )}
+                    <input
+                      type="text"
+                      value={paramValues[p.name] || ''}
+                      onChange={(e) => setParam(p.name, e.target.value)}
+                      placeholder={p.example ? `${p.example}` : `Enter ${p.name}...`}
+                      className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Test button */}
           <div className="flex items-center gap-3">
             <button
@@ -370,7 +417,6 @@ export default function AgentEmulatorPage() {
           {/* Response */}
           {result && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              {/* Response header */}
               <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-4">
                 <h2 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('common.response')}</h2>
                 <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -386,7 +432,6 @@ export default function AgentEmulatorPage() {
                 )}
               </div>
 
-              {/* Per-slug results */}
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {result.results.map((r) => (
                   <ResultCard
@@ -407,7 +452,7 @@ export default function AgentEmulatorPage() {
             </div>
           )}
 
-          {/* Hint when nothing shown */}
+          {/* Hint */}
           {!result && !error && !loading && (
             <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
               {t('emulator.hint')}
@@ -416,7 +461,7 @@ export default function AgentEmulatorPage() {
         </>
       )}
 
-      {/* No connection selected hint */}
+      {/* No connection */}
       {!connectionId && (
         <p className="text-gray-400 dark:text-gray-500 text-sm text-center py-12">
           {t('emulator.noConnection')}
@@ -446,10 +491,13 @@ export default function AgentEmulatorPage() {
               }}
             />
             <div className="text-xs text-gray-400 dark:text-gray-500 mb-4 space-y-1">
-              {plant && <p>Plant: {plant}</p>}
-              {sfc && <p>SFC: {sfc}</p>}
-              {workcenter && <p>Workcenter: {workcenter}</p>}
-              {resource && <p>Resource: {resource}</p>}
+              {Object.entries(paramValues)
+                .filter(([, v]) => v.trim())
+                .map(([k, v]) => (
+                  <p key={k}>
+                    <span className="font-mono text-gray-500 dark:text-gray-400">{k}</span>: {v}
+                  </p>
+                ))}
             </div>
             <div className="flex gap-3 justify-end">
               <button
@@ -474,31 +522,6 @@ export default function AgentEmulatorPage() {
 }
 
 /* ── Helper components ─────────────────────────────────── */
-
-function NamespaceField({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm font-mono placeholder-gray-400 dark:placeholder-gray-600"
-      />
-    </div>
-  );
-}
 
 function MethodBadge({ method }: { method: string }) {
   const colors: Record<string, string> = {
@@ -560,39 +583,27 @@ function ResultCard({
 
       {expanded && (
         <div className="px-5 pb-4 space-y-3">
-          {/* Request details */}
+          {/* Request path */}
           {result.requestPath && (
-            <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 space-y-1.5">
-              <div className="flex items-center gap-2">
-                {result.method && <MethodBadge method={result.method} />}
-                <code className="text-xs font-mono text-gray-700 dark:text-gray-200 break-all">
-                  {result.requestPath}
-                </code>
-              </div>
-              {result.requestParams && Object.keys(result.requestParams).length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {Object.entries(result.requestParams).map(([key, val]) => (
-                    <span
-                      key={key}
-                      className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono"
-                    >
-                      {key}={val}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {result.injectedParams && Object.keys(result.injectedParams).length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {Object.entries(result.injectedParams).map(([key, val]) => (
-                    <span
-                      key={key}
-                      className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono"
-                    >
-                      {key}={val} (injected)
-                    </span>
-                  ))}
-                </div>
-              )}
+            <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
+              {result.method && <MethodBadge method={result.method} />}
+              <code className="text-xs font-mono text-gray-700 dark:text-gray-200 break-all">
+                {result.requestPath}
+              </code>
+            </div>
+          )}
+
+          {/* Injected params (from dependency resolution) */}
+          {result.injectedParams && Object.keys(result.injectedParams).length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(result.injectedParams).map(([key, val]) => (
+                <span
+                  key={key}
+                  className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono"
+                >
+                  {key}={val} (injected)
+                </span>
+              ))}
             </div>
           )}
 
