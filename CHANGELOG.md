@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-20
+
+### Added
+
+- **Deploy Script** — `scripts/deploy.sh` for building, transferring, and deploying the Docker image to EC2 in one step (build, save, scp, load, restart)
+
+### Fixed
+
+- **Batch Import (Rate Limit Fix)** — Multi-file OpenAPI import now sends all specs in a single HTTP request instead of one per file, eliminating rate limit errors when importing many specs at once
+- Backend `/api/registry/import` accepts `specs[]` array for batch processing with per-file error isolation
+- Single-spec import (`spec` field) remains backward compatible
+
 ## [1.3.0] - 2026-02-20
 
 ### Added

@@ -35,3 +35,9 @@ pgdata/
 # Reports (generated artifacts)
 reports/*.pdf
 reports/*.json
+
+# SSH keys
+key/
+
+# Deploy artifacts
+*.tar.gz

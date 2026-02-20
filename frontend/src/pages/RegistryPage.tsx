@@ -135,21 +135,36 @@ export default function RegistryPage() {
     setImportResults([]);
     setImportPreviews([]);
     const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
-    const previews: ImportPreview[] = [];
-    const errors: string[] = [];
-    for (const spec of specs) {
-      try {
-        setImportProgress(`Parsing ${spec.name}...`);
+    try {
+      setImportProgress(`Parsing ${specs.length} file(s)...`);
+      if (specs.length === 1) {
+        // Single spec — use original format for backward compat
         const result = await api<ImportPreview>('/api/registry/import', 'POST', {
-          spec: spec.content, tags, preview: true,
+          spec: specs[0].content, tags, preview: true,
         });
-        previews.push(result);
-      } catch (err) {
-        errors.push(`${spec.name}: ${(err as Error).message}`);
+        setImportPreviews([result]);
+      } else {
+        // Batch — single request for all specs
+        const results = await api<(ImportPreview & { name: string; error?: string })[]>('/api/registry/import', 'POST', {
+          specs: specs.map(s => ({ name: s.name, content: s.content })),
+          tags,
+          preview: true,
+        });
+        const previews: ImportPreview[] = [];
+        const errors: string[] = [];
+        for (const r of results) {
+          if (r.error) {
+            errors.push(`${r.name}: ${r.error}`);
+          } else {
+            previews.push(r);
+          }
+        }
+        setImportPreviews(previews);
+        if (errors.length > 0) setImportError(errors.join('\n'));
       }
+    } catch (err) {
+      setImportError((err as Error).message);
     }
-    setImportPreviews(previews);
-    if (errors.length > 0) setImportError(errors.join('\n'));
     setImportProgress('');
     setImporting(false);
   }
@@ -160,22 +175,34 @@ export default function RegistryPage() {
     setImporting(true);
     setImportError('');
     const tags = importTags.split(',').map(t => t.trim()).filter(Boolean);
-    const results: ImportResult[] = [];
-    const errors: string[] = [];
-    for (const spec of specs) {
-      try {
-        setImportProgress(`Importing ${spec.name}...`);
+    try {
+      setImportProgress(`Importing ${specs.length} file(s)...`);
+      if (specs.length === 1) {
         const result = await api<ImportResult>('/api/registry/import', 'POST', {
-          spec: spec.content, tags,
+          spec: specs[0].content, tags,
         });
-        results.push(result);
-      } catch (err) {
-        errors.push(`${spec.name}: ${(err as Error).message}`);
+        setImportResults([result]);
+      } else {
+        const results = await api<(ImportResult & { name: string })[]>('/api/registry/import', 'POST', {
+          specs: specs.map(s => ({ name: s.name, content: s.content })),
+          tags,
+        });
+        const importResults: ImportResult[] = [];
+        const errors: string[] = [];
+        for (const r of results) {
+          if (r.created !== undefined) {
+            importResults.push(r);
+          } else {
+            errors.push(`${r.name}: ${r.errors?.join(', ') || 'Unknown error'}`);
+          }
+        }
+        setImportResults(importResults);
+        if (errors.length > 0) setImportError(errors.join('\n'));
       }
+    } catch (err) {
+      setImportError((err as Error).message);
     }
-    setImportResults(results);
     setImportPreviews([]);
-    if (errors.length > 0) setImportError(errors.join('\n'));
     setImportProgress('');
     setImporting(false);
     reload();

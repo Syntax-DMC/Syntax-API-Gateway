@@ -127,58 +127,89 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-// POST /import — Import OpenAPI spec (admin only)
+// POST /import — Import OpenAPI spec(s) (admin only)
+// Accepts either { spec } for single or { specs: [{name, content}] } for batch
 router.post('/import', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { spec, tags, preview } = req.body;
+    const { spec, specs, tags, preview } = req.body;
 
-    if (!spec) {
-      res.status(400).json({ error: 'spec is required' });
+    // Build array of specs to process
+    const specList: { name: string; content: string }[] = [];
+    if (Array.isArray(specs) && specs.length > 0) {
+      specList.push(...specs);
+    } else if (spec) {
+      specList.push({ name: 'spec', content: spec });
+    } else {
+      res.status(400).json({ error: 'spec or specs is required' });
       return;
     }
 
-    const parseResult = await openApiParserService.parseSpec(spec);
-
-    if (parseResult.errors.length > 0 && parseResult.endpoints.length === 0) {
-      res.status(400).json({
-        error: 'Failed to parse spec',
-        details: parseResult.errors,
-      });
-      return;
-    }
-
-    // Merge additional tags if provided
     const extraTags = tags || [];
-    const endpoints = parseResult.endpoints.map(ep => ({
-      ...ep,
-      tags: [...new Set([...ep.tags, ...extraTags])],
-      version: parseResult.version,
-      spec_format: parseResult.spec_format,
-    }));
+    const results: Array<{
+      name: string;
+      title?: string;
+      version?: string;
+      spec_format?: string;
+      endpoints?: unknown[];
+      created?: number;
+      skipped?: number;
+      errors: string[];
+      error?: string;
+    }> = [];
 
-    if (preview) {
-      res.json({
-        title: parseResult.title,
-        version: parseResult.version,
-        spec_format: parseResult.spec_format,
-        endpoints,
-        errors: parseResult.errors,
-      });
+    for (const item of specList) {
+      try {
+        const parseResult = await openApiParserService.parseSpec(item.content);
+
+        if (parseResult.errors.length > 0 && parseResult.endpoints.length === 0) {
+          results.push({ name: item.name, errors: parseResult.errors, error: 'Failed to parse spec' });
+          continue;
+        }
+
+        const endpoints = parseResult.endpoints.map(ep => ({
+          ...ep,
+          tags: [...new Set([...ep.tags, ...extraTags])],
+          version: parseResult.version,
+          spec_format: parseResult.spec_format,
+        }));
+
+        if (preview) {
+          results.push({
+            name: item.name,
+            title: parseResult.title,
+            version: parseResult.version,
+            spec_format: parseResult.spec_format,
+            endpoints,
+            errors: parseResult.errors,
+          });
+        } else {
+          const bulkResult = await registryService.bulkCreate(
+            req.user!.activeTenantId!,
+            req.user!.userId,
+            endpoints
+          );
+          results.push({
+            name: item.name,
+            title: parseResult.title,
+            ...bulkResult,
+            errors: [...parseResult.errors, ...bulkResult.errors],
+          });
+        }
+      } catch (err) {
+        results.push({ name: item.name, errors: [(err as Error).message] });
+      }
+    }
+
+    // Single-spec backward compatibility: return single object if only one spec was provided via `spec`
+    if (!Array.isArray(specs) && results.length === 1) {
+      const r = results[0];
+      // Remove `name` field for backward compat
+      const { name: _name, ...rest } = r;
+      res.json(rest);
       return;
     }
 
-    // Bulk create
-    const result = await registryService.bulkCreate(
-      req.user!.activeTenantId!,
-      req.user!.userId,
-      endpoints
-    );
-
-    res.json({
-      title: parseResult.title,
-      ...result,
-      errors: [...parseResult.errors, ...result.errors],
-    });
+    res.json(results);
   } catch (err) {
     console.error('Import registry error:', (err as Error).message);
     res.status(500).json({ error: 'Internal server error' });

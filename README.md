@@ -116,6 +116,18 @@ docker compose logs -f app
 
 The app runs on port **3000**. Database migrations execute automatically on startup.
 
+### Deploy to EC2
+
+A one-step deploy script builds the image locally, transfers it to EC2, and restarts the containers:
+
+```bash
+bash scripts/deploy.sh
+```
+
+**Prerequisites on EC2:** Docker, docker compose, `.env` and `docker-compose.yml` in the home directory.
+
+The script uses `key/gatewayPair.pem` for SSH access. EC2 host and user are configurable at the top of the script.
+
 ### docker-compose.yml
 
 - `app` — Gateway image, depends on healthy DB
@@ -143,6 +155,9 @@ The app runs on port **3000**. Database migrations execute automatically on star
 │   │   └── pages/             # Dashboard, Connections, Tokens, Logs, Explorer,
 │   │                          # Registry, Orchestration, Export Center, ...
 │   └── package.json
+├── scripts/
+│   └── deploy.sh              # Build + deploy to EC2
+├── key/                       # SSH keys (gitignored)
 ├── Dockerfile                 # Multi-stage build
 ├── docker-compose.yml
 ├── CHANGELOG.md               # Semantic versioning changelog
@@ -183,7 +198,7 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | GET/POST | `/api/tenants` | Tenant management (superadmin) |
 | GET/POST | `/api/users` | User management (admin) |
 | GET/POST | `/api/registry` | API Registry CRUD, import, versioning |
-| POST | `/api/registry/import` | Import OpenAPI/Swagger spec (multi-file) |
+| POST | `/api/registry/import` | Import OpenAPI/Swagger specs (single or batch) |
 | POST | `/api/registry/:id/test` | Test single API call |
 | POST | `/api/orchestrator/execute` | Execute orchestrated query (admin) |
 | POST | `/api/orchestrator/validate` | Validate query execution plan |
