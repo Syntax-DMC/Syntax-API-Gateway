@@ -17,8 +17,72 @@ class AutoResolverService {
   /**
    * Resolve a set of API slugs + context into an execution plan.
    * Automatically builds dependency graph from response_fields ↔ query_params matching.
+   * Auto-discovers intermediate APIs when a required param can't be satisfied by the selected set.
    */
   async resolve(
+    slugs: string[],
+    context: Record<string, string>,
+    tenantId: string,
+    overrides?: Record<string, Record<string, { source_slug: string; source_path: string }>>
+  ): Promise<AutoResolveResult> {
+    // Auto-discover: if there are unresolved required params, search all tenant APIs for providers
+    const expandedSlugs = await this.expandWithIntermediates(slugs, context, tenantId, overrides);
+
+    return this.resolveInternal(expandedSlugs, context, tenantId, overrides);
+  }
+
+  /**
+   * Discover and add intermediate APIs needed to bridge dependency gaps.
+   * Iterates until no new intermediates are found (max 5 rounds to prevent runaway).
+   */
+  private async expandWithIntermediates(
+    slugs: string[],
+    context: Record<string, string>,
+    tenantId: string,
+    overrides?: Record<string, Record<string, { source_slug: string; source_path: string }>>
+  ): Promise<string[]> {
+    const MAX_ROUNDS = 5;
+    let currentSlugs = [...slugs];
+
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      // Quick resolve pass to find unresolved params
+      const result = await this.resolveInternal(currentSlugs, context, tenantId, overrides);
+      const unresolved = result.unresolvedParams;
+
+      if (unresolved.length === 0) break;
+
+      // Collect the param names we need providers for
+      const neededParams = new Set(unresolved.map(u => u.param));
+
+      // Load all active tenant APIs to search for providers
+      const allTenantDefs = await registryService.listByTenant(tenantId, { is_active: true });
+
+      // Build global providers: leaf_name → slugs that provide it
+      const currentSet = new Set(currentSlugs);
+      const newSlugs: string[] = [];
+
+      for (const def of allTenantDefs) {
+        if (currentSet.has(def.slug)) continue; // already included
+        for (const field of def.response_fields || []) {
+          if (neededParams.has(field.leaf_name)) {
+            newSlugs.push(def.slug);
+            currentSet.add(def.slug);
+            break; // only add this API once
+          }
+        }
+      }
+
+      if (newSlugs.length === 0) break; // no new providers found
+      currentSlugs = [...currentSlugs, ...newSlugs];
+    }
+
+    return currentSlugs;
+  }
+
+  /**
+   * Core resolve logic (no auto-discovery, just builds the plan from given slugs).
+   */
+  private async resolveInternal(
     slugs: string[],
     context: Record<string, string>,
     tenantId: string,

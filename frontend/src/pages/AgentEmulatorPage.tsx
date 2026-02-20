@@ -23,13 +23,17 @@ function savePresetsToStorage(presets: EmulatorPreset[]) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
 }
 
-/** Collect unique parameters from selected API definitions, excluding auto-provided ones */
-function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (ParamDefinition & { apiCount: number; providedBy?: string })[] {
-  const selected = defs.filter((d) => selectedSlugs.has(d.slug));
+/**
+ * Collect unique parameters from selected API definitions, excluding auto-provided ones.
+ * Searches ALL assigned defs (not just selected) for providers — mirrors the backend's
+ * auto-discovery of intermediate APIs.
+ */
+function collectParams(allAssigned: ApiDefinition[], selectedSlugs: Set<string>): (ParamDefinition & { apiCount: number; providedBy?: string })[] {
+  const selected = allAssigned.filter((d) => selectedSlugs.has(d.slug));
 
-  // Build providers map: leaf_name → slug that provides it (from response_fields)
+  // Build providers map from ALL assigned defs: leaf_name → slug that provides it
   const providers = new Map<string, string>();
-  for (const def of selected) {
+  for (const def of allAssigned) {
     for (const field of def.response_fields || []) {
       if (!providers.has(field.leaf_name)) {
         providers.set(field.leaf_name, def.slug);
@@ -37,7 +41,7 @@ function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (Para
     }
   }
 
-  // Build param → which slugs need it
+  // Build param → which slugs need it (selected only)
   const paramSlugs = new Map<string, Set<string>>();
   for (const def of selected) {
     for (const p of def.query_params || []) {
@@ -56,7 +60,7 @@ function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (Para
         if (p.description && !existing.description) existing.description = p.description;
         if (p.example && !existing.example) existing.example = p.example;
       } else {
-        // Check if another selected API provides this param via response_fields
+        // Check if any assigned API provides this param (not the one needing it)
         const provider = providers.get(p.name);
         const needingSlugs = paramSlugs.get(p.name)!;
         const isProvidedByOther = provider && !needingSlugs.has(provider);
