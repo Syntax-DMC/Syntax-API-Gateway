@@ -1,31 +1,40 @@
 # Syntax DM Gateway
 
-Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secure, multi-tenant proxy layer with built-in admin UI for managing SAP connections, API tokens, and request logs.
+Self-service API Gateway for **SAP Digital Manufacturing (DM)**. Provides a secure, multi-tenant proxy layer with built-in admin UI for managing SAP connections, API tokens, and request logs. Includes an **orchestration engine** that lets AI agents execute multiple SAP DM API calls in a single request, and an **export center** for generating OpenAPI specs for agent integration.
 
 ## Features
 
 - **SAP DM Proxy** — OAuth2 client_credentials flow with automatic token caching and retry on 401
 - **AI Agent Proxy** — POST-only forwarding with encrypted API key storage
+- **API Registry** — Import OpenAPI/Swagger specs, manage API definitions with versioning and revert
+- **Orchestration Engine** — Execute multiple SAP DM API calls in one request with dependency resolution
+- **Export Center** — Generate OpenAPI 3.0/Swagger 2.0 specs and GenAI Studio toolkit configs for agent integration
 - **Multi-Tenancy** — tenant-scoped connections, tokens, and users with per-tenant roles
-- **Admin UI** — React SPA for managing connections, tokens, users, tenants, logs, and API explorer
+- **Admin UI** — React SPA with dashboard, connections, tokens, logs, explorer, registry, orchestration, and export
 - **Security** — AES-256-GCM secret encryption, Helmet, CORS, rate limiting, token revocation
 - **Request Logging** — async fire-and-forget with header redaction and body size cap (64 KB)
 
 ## Architecture
 
 ```
-┌─────────────┐       ┌──────────────────────────────────┐       ┌─────────────┐
-│  Admin UI   │──JWT──│         Express Backend          │       │   SAP DM    │
-│  (React)    │       │                                  │──────▶│   (OAuth2)  │
-└─────────────┘       │  /api/*  Admin API (JWT auth)    │       └─────────────┘
-                      │  /gw/dm/* SAP proxy (API key)    │
-┌─────────────┐       │  /gw/agent/* AI proxy (API key)  │       ┌─────────────┐
-│ API Clients │─key──▶│                                  │──────▶│  AI Agent   │
-└─────────────┘       └──────────────┬───────────────────┘       └─────────────┘
-                                     │
-                              ┌──────┴──────┐
-                              │ PostgreSQL  │
-                              └─────────────┘
+                      ┌──────────────────────────────────────┐
+┌─────────────┐       │           Express Backend            │       ┌─────────────┐
+│  Admin UI   │──JWT──│                                      │       │   SAP DM    │
+│  (React)    │       │  /api/*       Admin API (JWT auth)   │──────▶│   (OAuth2)  │
+└─────────────┘       │  /gw/dm/*     SAP proxy (API key)    │       └─────────────┘
+                      │  /gw/agent/*  AI proxy (API key)     │
+┌─────────────┐       │  /gw/query    Orchestrator (API key) │       ┌─────────────┐
+│ AI Agent /  │─key──▶│                                      │──────▶│  AI Agent   │
+│ POD Plugin  │       │  Orchestration Layer:                │       └─────────────┘
+└─────────────┘       │  - API Registry + Assignments        │
+                      │  - Dependency Resolution             │
+                      │  - Parallel/Sequential Execution     │
+                      │  - OpenAPI Export for Agents          │
+                      └──────────────────┬───────────────────┘
+                                         │
+                                  ┌──────┴──────┐
+                                  │ PostgreSQL  │
+                                  └─────────────┘
 ```
 
 ### Two Auth Paths
@@ -117,10 +126,11 @@ The app runs on port **3000**. Database migrations execute automatically on star
 ```
 ├── backend/
 │   ├── src/
-│   │   ├── db/migrations/     # SQL migrations (001–007)
+│   │   ├── db/migrations/     # SQL migrations (001–010)
 │   │   ├── middleware/         # auth, cors, rate-limit, token-auth, request-logger
-│   │   ├── routes/            # Express routers (auth, connections, tokens, proxy, ...)
-│   │   ├── services/          # Business logic (proxy, crypto, sap-token, ...)
+│   │   ├── routes/            # Express routers (auth, connections, registry, orchestrator, export, ...)
+│   │   ├── services/          # Business logic (proxy, crypto, registry, orchestrator, export, ...)
+│   │   ├── types/index.ts     # Shared TypeScript interfaces
 │   │   ├── config.ts          # Environment config
 │   │   └── index.ts           # App entry point
 │   └── package.json
@@ -129,10 +139,13 @@ The app runs on port **3000**. Database migrations execute automatically on star
 │   │   ├── api/client.ts      # Fetch client with JWT auto-refresh
 │   │   ├── components/        # Layout, modals, stats cards
 │   │   ├── hooks/             # useApi, useAuth, useTheme
-│   │   └── pages/             # Dashboard, Connections, Tokens, Logs, Explorer, ...
+│   │   ├── types/index.ts     # Frontend type definitions
+│   │   └── pages/             # Dashboard, Connections, Tokens, Logs, Explorer,
+│   │                          # Registry, Orchestration, Export Center, ...
 │   └── package.json
 ├── Dockerfile                 # Multi-stage build
 ├── docker-compose.yml
+├── CHANGELOG.md               # Semantic versioning changelog
 └── .env.example
 ```
 
@@ -149,6 +162,9 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | 005 | Log body storage |
 | 006 | API catalog |
 | 007 | Multi-tenancy (tenants, user_tenants, tenant scoping) |
+| 008 | API Registry (api_definitions, api_definition_versions) |
+| 009 | Connection-API assignments |
+| 010 | Export audit logs |
 
 ## API Overview
 
@@ -166,6 +182,15 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | POST | `/api/explorer/:connectionId/*` | Test SAP endpoints |
 | GET/POST | `/api/tenants` | Tenant management (superadmin) |
 | GET/POST | `/api/users` | User management (admin) |
+| GET/POST | `/api/registry` | API Registry CRUD, import, versioning |
+| POST | `/api/registry/import` | Import OpenAPI/Swagger spec |
+| POST | `/api/registry/:id/test` | Test single API call |
+| POST | `/api/orchestrator/execute` | Execute orchestrated query (admin) |
+| POST | `/api/orchestrator/validate` | Validate query execution plan |
+| GET | `/api/export` | List connections with export metadata |
+| GET | `/api/export/connections/:id` | Download OpenAPI/Swagger spec |
+| GET | `/api/export/connections/:id/preview` | Preview generated spec |
+| GET | `/api/export/connections/:id/toolkit-config` | GenAI Studio toolkit config |
 
 ### Gateway Proxy (`/gw`)
 
@@ -174,6 +199,35 @@ Migrations run automatically on server start and are tracked in the `_migrations
 | GET | `/gw/health` | Health check |
 | ALL | `/gw/dm/*` | SAP DM proxy (API key auth) |
 | POST | `/gw/agent/*` | AI Agent proxy (API key auth) |
+| POST | `/gw/query` | Orchestrated multi-API query (API key auth) |
+
+### Orchestrated Query
+
+Send a single request to execute multiple SAP DM API calls:
+
+```bash
+curl -X POST https://gateway/gw/query \
+  -H "x-api-key: sdmg_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "calls": [
+      { "slug": "sfc-detail", "params": { "plant": "1000", "sfc": "SFC-001" } },
+      { "slug": "order-detail", "params": { "plant": "1000", "order": "ORD-5000" } }
+    ],
+    "mode": "parallel"
+  }'
+```
+
+The gateway resolves dependencies, executes calls in parallel or sequential layers, and returns consolidated results.
+
+### Export for Agent Integration
+
+Generate OpenAPI specs describing gateway endpoints for AI agent discovery:
+
+- **OpenAPI 3.0** (JSON/YAML) and **Swagger 2.0** (JSON)
+- Includes `POST /gw/query` endpoint with all assigned API slugs and parameter schemas
+- **Toolkit Config** JSON for GenAI Studio with gateway URL and API key header
+- Configurable gateway URL and export scope
 
 ## Environment Variables
 
