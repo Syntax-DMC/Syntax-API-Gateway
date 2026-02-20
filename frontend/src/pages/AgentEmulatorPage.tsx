@@ -560,17 +560,39 @@ function ResultCard({
 
       {expanded && (
         <div className="px-5 pb-4 space-y-3">
-          {/* Injected params */}
-          {result.injectedParams && Object.keys(result.injectedParams).length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(result.injectedParams).map(([key, val]) => (
-                <span
-                  key={key}
-                  className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono"
-                >
-                  {key}={val}
-                </span>
-              ))}
+          {/* Request details */}
+          {result.requestPath && (
+            <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                {result.method && <MethodBadge method={result.method} />}
+                <code className="text-xs font-mono text-gray-700 dark:text-gray-200 break-all">
+                  {result.requestPath}
+                </code>
+              </div>
+              {result.requestParams && Object.keys(result.requestParams).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {Object.entries(result.requestParams).map(([key, val]) => (
+                    <span
+                      key={key}
+                      className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono"
+                    >
+                      {key}={val}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {result.injectedParams && Object.keys(result.injectedParams).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {Object.entries(result.injectedParams).map(([key, val]) => (
+                    <span
+                      key={key}
+                      className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono"
+                    >
+                      {key}={val} (injected)
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

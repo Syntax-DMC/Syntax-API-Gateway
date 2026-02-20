@@ -262,6 +262,9 @@ export interface AutoResolvePreview {
 export interface OrchestratorCallResult {
   slug: string;
   status: 'fulfilled' | 'rejected';
+  method?: string;
+  requestPath?: string;
+  requestParams?: Record<string, string>;
   statusCode?: number;
   responseHeaders?: Record<string, string>;
   responseBody?: unknown;

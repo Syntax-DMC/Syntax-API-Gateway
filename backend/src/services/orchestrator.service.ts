@@ -446,6 +446,9 @@ class OrchestratorService {
       return {
         slug: call.slug,
         status: 'fulfilled',
+        method: def.method,
+        requestPath: finalPath,
+        requestParams: call.params,
         statusCode: result.statusCode,
         responseHeaders: result.responseHeaders,
         responseBody,
@@ -456,6 +459,9 @@ class OrchestratorService {
       return {
         slug: call.slug,
         status: 'rejected',
+        method: def.method,
+        requestPath: finalPath,
+        requestParams: call.params,
         durationMs: Date.now() - start,
         error: (err as Error).message,
       };
