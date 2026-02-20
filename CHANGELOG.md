@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Orchestrator: fix array path extraction for dependency injection** — `extractByDotPath` now handles `[]` notation (empty brackets = first array element) from response_fields paths like `value[].material`. Previously only `[0]` worked, breaking automatic dependency resolution between APIs (e.g., SFC Details → Material Details).
 
+### Changed
+
+- **Agent Emulator: hide auto-resolved parameters** — Parameters that are automatically provided by another selected API's response (e.g., `material` from SFC Details) are no longer shown as input fields. Instead, they appear as purple "auto-resolved" badges showing the source API, so the user knows the orchestrator will handle the injection.
+
 ## [1.14.3] - 2026-02-20
 
 ### Added

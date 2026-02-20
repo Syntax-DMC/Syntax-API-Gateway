@@ -414,6 +414,7 @@ const fr: Translations = {
     agentCall: 'Appel agent',
     showOrchestrator: 'Orchestrateur',
     showDirect: 'Appels directs',
+    autoResolved: 'Résolu automatiquement',
     hint: 'Sélectionnez les APIs souhaitées, remplissez les paramètres et cliquez sur Tester (ou Ctrl+Entrée).',
     noConnection: 'Sélectionnez une connexion pour commencer.',
   },

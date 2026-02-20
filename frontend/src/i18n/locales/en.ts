@@ -412,6 +412,7 @@ const en = {
     agentCall: 'Agent Call',
     showOrchestrator: 'Orchestrator',
     showDirect: 'Direct calls',
+    autoResolved: 'Auto-resolved',
     hint: 'Select the APIs you want, fill in parameters, and click Test (or Ctrl+Enter).',
     noConnection: 'Select a connection to begin.',
   },

@@ -23,11 +23,31 @@ function savePresetsToStorage(presets: EmulatorPreset[]) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
 }
 
-/** Collect unique context parameters from selected API definitions */
-function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (ParamDefinition & { apiCount: number })[] {
-  const map = new Map<string, ParamDefinition & { apiCount: number }>();
-  for (const def of defs) {
-    if (!selectedSlugs.has(def.slug)) continue;
+/** Collect unique parameters from selected API definitions, excluding auto-provided ones */
+function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (ParamDefinition & { apiCount: number; providedBy?: string })[] {
+  const selected = defs.filter((d) => selectedSlugs.has(d.slug));
+
+  // Build providers map: leaf_name → slug that provides it (from response_fields)
+  const providers = new Map<string, string>();
+  for (const def of selected) {
+    for (const field of def.response_fields || []) {
+      if (!providers.has(field.leaf_name)) {
+        providers.set(field.leaf_name, def.slug);
+      }
+    }
+  }
+
+  // Build param → which slugs need it
+  const paramSlugs = new Map<string, Set<string>>();
+  for (const def of selected) {
+    for (const p of def.query_params || []) {
+      if (!paramSlugs.has(p.name)) paramSlugs.set(p.name, new Set());
+      paramSlugs.get(p.name)!.add(def.slug);
+    }
+  }
+
+  const map = new Map<string, ParamDefinition & { apiCount: number; providedBy?: string }>();
+  for (const def of selected) {
     for (const p of def.query_params || []) {
       const existing = map.get(p.name);
       if (existing) {
@@ -36,7 +56,11 @@ function collectParams(defs: ApiDefinition[], selectedSlugs: Set<string>): (Para
         if (p.description && !existing.description) existing.description = p.description;
         if (p.example && !existing.example) existing.example = p.example;
       } else {
-        map.set(p.name, { ...p, apiCount: 1 });
+        // Check if another selected API provides this param via response_fields
+        const provider = providers.get(p.name);
+        const needingSlugs = paramSlugs.get(p.name)!;
+        const isProvidedByOther = provider && !needingSlugs.has(provider);
+        map.set(p.name, { ...p, apiCount: 1, providedBy: isProvidedByOther ? provider : undefined });
       }
     }
   }
@@ -93,13 +117,15 @@ export default function AgentEmulatorPage() {
   // Filter definitions to assigned ones
   const assignedDefs = (allDefs || []).filter((d) => assignedIds.has(d.id) && d.is_active);
 
-  // Collect unique params from selected APIs, split into context vs API-specific
+  // Collect unique params from selected APIs, split into context vs API-specific vs auto-provided
   const allParams = useMemo(
     () => collectParams(assignedDefs, selectedSlugs),
     [assignedDefs, selectedSlugs]
   );
-  const contextParams = allParams.filter((p) => p.context_var);
-  const apiSpecificParams = allParams.filter((p) => !p.context_var);
+  const userParams = allParams.filter((p) => !p.providedBy);
+  const autoProvidedParams = allParams.filter((p) => p.providedBy);
+  const contextParams = userParams.filter((p) => p.context_var);
+  const apiSpecificParams = userParams.filter((p) => !p.context_var);
 
   // Close preset dropdown on outside click
   useEffect(() => {
@@ -410,6 +436,21 @@ export default function AgentEmulatorPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Auto-resolved parameters — shown as info badges */}
+          {autoProvidedParams.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              <span className="text-xs text-gray-400 dark:text-gray-500">{t('emulator.autoResolved')}:</span>
+              {autoProvidedParams.map((p) => (
+                <span
+                  key={p.name}
+                  className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-400 font-mono"
+                >
+                  {p.name} <span className="text-purple-400/60">&larr; {p.providedBy}</span>
+                </span>
+              ))}
             </div>
           )}
 
