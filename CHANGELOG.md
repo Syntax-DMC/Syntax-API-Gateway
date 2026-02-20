@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Orchestrator: fix array path extraction for dependency injection** — `extractByDotPath` now handles `[]` notation (empty brackets = first array element) from response_fields paths like `value[].material`. Previously only `[0]` worked, breaking automatic dependency resolution between APIs (e.g., SFC Details → Material Details).
+- **Orchestrator: restrict auto-resolve to context_var params only** — Generic field names like `version`, `type`, `size` created false dependencies between APIs and circular dependency cycles. Now only known SAP DM context params (`plant`, `sfc`, `material`, `order`, `bom`, etc. — those with `context_var` set) are auto-resolved. Generic params are left for the user to fill in.
 
 ### Changed
 

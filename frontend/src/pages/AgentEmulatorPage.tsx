@@ -60,8 +60,9 @@ function collectParams(allAssigned: ApiDefinition[], selectedSlugs: Set<string>)
         if (p.description && !existing.description) existing.description = p.description;
         if (p.example && !existing.example) existing.example = p.example;
       } else {
-        // Check if any assigned API provides this param (not the one needing it)
-        const provider = providers.get(p.name);
+        // Only auto-resolve context_var params (plant, sfc, material, etc.)
+        // Generic params like version, type, size would create false dependencies
+        const provider = p.context_var ? providers.get(p.name) : undefined;
         const needingSlugs = paramSlugs.get(p.name)!;
         const isProvidedByOther = provider && !needingSlugs.has(provider);
         map.set(p.name, { ...p, apiCount: 1, providedBy: isProvidedByOther ? provider : undefined });

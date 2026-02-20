@@ -127,7 +127,7 @@ class AutoResolverService {
       const mappings: { source_slug: string; source: string; target: string }[] = [];
 
       for (const qp of def.query_params) {
-        // Check user overrides first
+        // Check user overrides first (always honoured)
         if (overrides?.[slug]?.[qp.name]) {
           const ov = overrides[slug][qp.name];
           mappings.push({ source_slug: ov.source_slug, source: ov.source_path, target: qp.name });
@@ -142,18 +142,25 @@ class AutoResolverService {
           continue;
         }
 
-        // Check providers (but not self)
-        const providerList = providers.get(qp.name)?.filter(p => p.slug !== slug);
-        if (providerList && providerList.length > 0) {
-          if (providerList.length > 1) {
-            warnings.push(
-              `Ambiguous: param "${qp.name}" for "${slug}" can be provided by: ${providerList.map(p => p.slug).join(', ')}. Using "${providerList[0].slug}".`
-            );
+        // Only auto-resolve params that are known SAP DM context variables (context_var set).
+        // Generic params like version, type, size would create false dependencies everywhere.
+        if (qp.context_var) {
+          const providerList = providers.get(qp.name)?.filter(p => p.slug !== slug);
+          if (providerList && providerList.length > 0) {
+            if (providerList.length > 1) {
+              warnings.push(
+                `Ambiguous: param "${qp.name}" for "${slug}" can be provided by: ${providerList.map(p => p.slug).join(', ')}. Using "${providerList[0].slug}".`
+              );
+            }
+            const chosen = providerList[0];
+            mappings.push({ source_slug: chosen.slug, source: chosen.path, target: qp.name });
+            injectedParams[qp.name] = { source_slug: chosen.slug, source_path: chosen.path };
+            continue;
           }
-          const chosen = providerList[0];
-          mappings.push({ source_slug: chosen.slug, source: chosen.path, target: qp.name });
-          injectedParams[qp.name] = { source_slug: chosen.slug, source_path: chosen.path };
-        } else if (qp.required) {
+        }
+
+        // Unresolved: only track context_var params as truly unresolved (for auto-discovery)
+        if (qp.required && qp.context_var) {
           unresolvedParams.push({ slug, param: qp.name });
           unresolvedForApi.push(qp.name);
         }
