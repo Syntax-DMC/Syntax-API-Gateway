@@ -78,12 +78,23 @@ class TenantService {
       throw new Error('Cannot deactivate the Platform tenant');
     }
 
-    // Cascade deactivation
-    await pool.query('UPDATE user_tenants SET is_active = false WHERE tenant_id = $1', [id]);
-    await pool.query('UPDATE sap_connections SET is_active = false WHERE tenant_id = $1', [id]);
-    await pool.query('UPDATE api_tokens SET is_active = false WHERE tenant_id = $1', [id]);
+    // Cascade deactivation in a single transaction
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE user_tenants SET is_active = false WHERE tenant_id = $1', [id]);
+      await client.query('UPDATE sap_connections SET is_active = false WHERE tenant_id = $1', [id]);
+      await client.query('UPDATE api_tokens SET is_active = false WHERE tenant_id = $1', [id]);
+      await client.query('UPDATE tenants SET is_active = false, updated_at = now() WHERE id = $1', [id]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
-    return this.update(id, { is_active: false });
+    return this.getById(id);
   }
 }
 

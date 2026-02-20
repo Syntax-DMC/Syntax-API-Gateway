@@ -132,7 +132,7 @@ export async function tokenAuthMiddleware(
     pool.query(
       'UPDATE api_tokens SET last_used_at = now(), request_count = request_count + 1 WHERE id = $1',
       [row.token_id]
-    ).catch(() => {});
+    ).catch((err) => console.error('Token usage update failed:', (err as Error).message));
 
     next();
   } catch (err) {

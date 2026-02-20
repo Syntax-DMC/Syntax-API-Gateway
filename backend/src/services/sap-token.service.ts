@@ -10,6 +10,8 @@ interface CachedToken {
 }
 
 const EXPIRY_BUFFER_MS = 120_000; // refresh 2 min before expiry
+const MAX_CACHE_SIZE = 500;
+const CACHE_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * SAP OAuth2 Token Manager with in-memory caching.
@@ -19,6 +21,10 @@ const EXPIRY_BUFFER_MS = 120_000; // refresh 2 min before expiry
  */
 class SapTokenService {
   private cache = new Map<string, CachedToken>();
+
+  constructor() {
+    setInterval(() => this.cleanupExpired(), CACHE_CLEANUP_INTERVAL_MS);
+  }
 
   async getToken(connectionId: string): Promise<string> {
     const cached = this.cache.get(connectionId);
@@ -33,6 +39,12 @@ class SapTokenService {
     const clientSecret = await cryptoService.decrypt(conn.client_secret_enc);
     const tokenData = await this.fetchOAuthToken(conn.token_url, conn.client_id, clientSecret);
 
+    // Evict oldest entry if cache is full
+    if (this.cache.size >= MAX_CACHE_SIZE) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) this.cache.delete(firstKey);
+    }
+
     this.cache.set(connectionId, {
       accessToken: tokenData.access_token,
       expiresAt: Date.now() + tokenData.expires_in * 1000,
@@ -43,6 +55,15 @@ class SapTokenService {
 
   invalidate(connectionId: string): void {
     this.cache.delete(connectionId);
+  }
+
+  private cleanupExpired(): void {
+    const now = Date.now();
+    for (const [id, token] of this.cache) {
+      if (token.expiresAt <= now) {
+        this.cache.delete(id);
+      }
+    }
   }
 
   private fetchOAuthToken(

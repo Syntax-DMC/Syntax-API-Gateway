@@ -81,22 +81,27 @@ class AssignmentService {
     );
     if (connRows.length === 0) throw new Error('Connection not found');
 
-    let assigned = 0;
-    let skipped = 0;
+    if (apiDefIds.length === 0) return { assigned: 0, skipped: 0 };
 
+    // Multi-row INSERT instead of N individual queries
+    const valuePlaceholders: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
     for (const apiDefId of apiDefIds) {
-      const { rowCount } = await pool.query(
-        `INSERT INTO connection_api_assignments
-          (sap_connection_id, api_definition_id, tenant_id, created_by)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (sap_connection_id, api_definition_id) DO NOTHING`,
-        [connectionId, apiDefId, tenantId, userId]
-      );
-      if (rowCount && rowCount > 0) assigned++;
-      else skipped++;
+      valuePlaceholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+      params.push(connectionId, apiDefId, tenantId, userId);
     }
 
-    return { assigned, skipped };
+    const { rowCount } = await pool.query(
+      `INSERT INTO connection_api_assignments
+        (sap_connection_id, api_definition_id, tenant_id, created_by)
+       VALUES ${valuePlaceholders.join(', ')}
+       ON CONFLICT (sap_connection_id, api_definition_id) DO NOTHING`,
+      params
+    );
+
+    const assigned = rowCount ?? 0;
+    return { assigned, skipped: apiDefIds.length - assigned };
   }
 
   async replaceAssignments(
@@ -117,15 +122,22 @@ class AssignmentService {
     );
 
     let assigned = 0;
-    for (const apiDefId of apiDefIds) {
-      await pool.query(
+    if (apiDefIds.length > 0) {
+      const valuePlaceholders: string[] = [];
+      const params: unknown[] = [];
+      let idx = 1;
+      for (const apiDefId of apiDefIds) {
+        valuePlaceholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+        params.push(connectionId, apiDefId, tenantId, userId);
+      }
+      const { rowCount: insertCount } = await pool.query(
         `INSERT INTO connection_api_assignments
           (sap_connection_id, api_definition_id, tenant_id, created_by)
-         VALUES ($1, $2, $3, $4)
+         VALUES ${valuePlaceholders.join(', ')}
          ON CONFLICT (sap_connection_id, api_definition_id) DO NOTHING`,
-        [connectionId, apiDefId, tenantId, userId]
+        params
       );
-      assigned++;
+      assigned = insertCount ?? 0;
     }
 
     return { assigned, removed: rowCount ?? 0 };

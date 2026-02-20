@@ -29,13 +29,14 @@ class AutoResolverService {
     const dependencyEdges: AutoResolveResult['dependencyEdges'] = [];
     const apiDetails: Record<string, AutoResolveApiDetail> = {};
 
-    // 1. Fetch all definitions
+    // 1. Fetch all definitions in one query
     const defs = new Map<string, ApiDefinition>();
+    const allDefs = await registryService.getBySlugs(slugs, tenantId);
+    for (const def of allDefs) {
+      defs.set(def.slug, def);
+    }
     for (const slug of slugs) {
-      const def = await registryService.getBySlug(slug, tenantId);
-      if (def) {
-        defs.set(slug, def);
-      } else {
+      if (!defs.has(slug)) {
         warnings.push(`API definition not found: ${slug}`);
       }
     }

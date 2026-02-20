@@ -14,14 +14,14 @@ export default function DashboardPage() {
   const [deleting, setDeleting] = useState(false);
 
   const handleDeleteAll = async () => {
-    if (!confirm('Alle Request-Logs unwiderruflich löschen?')) return;
+    if (!confirm('Delete all request logs permanently?')) return;
     setDeleting(true);
     try {
       await api('/api/logs', 'DELETE');
       reloadLogs();
       reloadStats();
     } catch (err) {
-      alert('Fehler beim Löschen: ' + (err as Error).message);
+      alert('Failed to delete logs: ' + (err as Error).message);
     } finally {
       setDeleting(false);
     }
@@ -80,7 +80,7 @@ export default function DashboardPage() {
               disabled={deleting}
               className="text-xs px-3 py-1 rounded bg-red-600/20 text-red-400 hover:bg-red-600/40 disabled:opacity-50 transition-colors"
             >
-              {deleting ? 'Löschen...' : 'Alle löschen'}
+              {deleting ? 'Deleting...' : 'Delete all'}
             </button>
           )}
         </div>

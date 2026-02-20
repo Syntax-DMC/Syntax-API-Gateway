@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-02-20
+
+### Fixed
+
+- **N+1 query in assignment service** — Bulk assign and replace operations now use a single multi-row INSERT instead of per-item queries
+- **N+1 query in auto-resolver** — Slug lookup uses a single `WHERE slug = ANY($1)` query instead of fetching definitions one by one
+- **Silent error swallowing in token-auth** — Fire-and-forget token usage updates now log errors instead of silently discarding them
+- **Missing transaction in tenant deactivation** — Cascade deactivation of tenant, users, connections, and tokens is now wrapped in a database transaction with rollback on failure
+- **Unbounded SAP token cache** — Token cache is now bounded to 500 entries with LRU-style eviction and periodic expired entry cleanup (10-min interval)
+- **Mixed German/English UI strings** — Dashboard buttons and confirmations are now consistently in English
+
 ## [1.11.0] - 2026-02-20
 
 ### Added

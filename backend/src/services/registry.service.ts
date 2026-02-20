@@ -63,6 +63,15 @@ class RegistryService {
     return rows.length > 0 ? rows[0] : null;
   }
 
+  async getBySlugs(slugs: string[], tenantId: string): Promise<ApiDefinition[]> {
+    if (slugs.length === 0) return [];
+    const { rows } = await pool.query<ApiDefinition>(
+      'SELECT * FROM api_definitions WHERE slug = ANY($1) AND tenant_id = $2',
+      [slugs, tenantId]
+    );
+    return rows;
+  }
+
   async create(
     tenantId: string,
     userId: string,
